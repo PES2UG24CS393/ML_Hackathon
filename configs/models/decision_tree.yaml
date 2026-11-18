@@ -1,0 +1,9 @@
+# S2-A1 baseline; positive candidate class is 1.
+model: decision_tree
+seed: 42
+params:
+  criterion: gini
+  max_depth: 8
+  min_samples_leaf: 20
+  min_samples_split: 2
+  class_weight: null
