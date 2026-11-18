@@ -2,18 +2,31 @@
 
 PathSnap matches timestamped GPS fixes to a directed road network. Sprint 1 runs the development-data inventory, geometric candidate ranking, nearest-segment demo, and candidate feature extraction. The [viva guide](docs/viva-guide.md) explains those stages and the remaining work.
 
-## Run the Sprint 1 demo
+## CPU setup
 
-Use Python 3.10 or newer. From the repository root, create and activate a virtual environment, then install the map dependency.
+The pinned Sprint 2 environment is verified on CPython 3.14 (3.14.10) on Linux x86-64.
+Use that environment for reproducible results. The CPU XGBoost package supplies
+the existing `xgboost` import. NumPy, SciPy (scikit-learn and XGBoost dependency),
+model/runtime libraries, the Folium renderer, and HTTP test dependencies are pinned.
+`constraints-cpu.txt` records the resolved transitive versions.
+
+From the repository root, create a virtual environment and install the requirements.
 
 ```bash
-python3 -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python -m pip check
 python main.py demo data/train/00000005 --output outputs/trip_00000005
 ```
 
-On Windows PowerShell, use `py -3 -m venv .venv` and `.venv\Scripts\Activate.ps1`, then run the same install and demo commands.
+Windows and macOS installs have not been verified. On Linux, use the documented
+CPython version if pip cannot find a binary wheel. Install packages with the
+virtual environment's `python -m pip` if command imports fail.
+
+The inventory, features, dataset build, readiness checker, and offline review
+sheet use Python's standard library. The Folium demo requires the pinned mapping
+dependencies and loads Leaflet and map tiles in the browser.
 
 Open `outputs/trip_00000005.html` or the [checked-in map](docs/evidence/trip_00000005.html) in a browser with internet access. Toggle gray roads, blue GPS observations, red nearest segments, and the green reference route independently. The reference starts hidden. The generated JSON contains one prediction per observation and a separate development reference sequence. The demo matches all 1,045 fixes within 250 m on this trip. This is distance-cutoff coverage. Prediction accuracy requires validated observation labels.
 
@@ -27,6 +40,24 @@ python -m unittest discover -s tests -v
 ```
 
 Run `python main.py --help` for the command list and add `--help` after any command for its options. Reports and demo files are generated in the ignored `outputs/` directory. The inventory scans only `data/train` and `data/student_test`. The ranked candidate command uses an uncapped search for Top-K. The map baseline uses a 250 m cutoff, and the feature extractor defaults to 100 m and up to eight candidates. The feature command exports the inference table separately from the provisional alignment.
+
+The full suite includes local HTTP tests that bind loopback and tiny synthetic
+model fit and Optuna tests. The fixture tests use synthetic inputs. A socket
+permission failure in the UI tests means the environment needs loopback access.
+
+## Dataset export and review
+
+```bash
+python -m data_prep.build_dataset --data data --out artifacts/data --seed 2026
+python -m data_prep.check_dataset --manifest artifacts/data/manifest.json
+python -m data_prep.check_dataset --require-training-ready
+```
+
+The builder writes candidate features, per-observation proposals, trip and fold
+coverage, review queues, grouped folds, and a hash-bearing manifest. The strict
+readiness command exits 1 while independent training review is insufficient.
+See the [review instructions](data_prep/README.md) and
+[current readiness report](docs/data_readiness_report.md).
 
 ## Repository layout
 
@@ -42,25 +73,19 @@ Run `python main.py --help` for the command list and add `--help` after any comm
 - [Architecture and parser contract](docs/architecture.md), [dataset findings](docs/dataset.md), and [feature schema](docs/features.md)
 - [Five-model experiment plan](docs/model_plan.md) and [official assignment guidelines](docs/guidelines/)
 
-## Sprint 2 on CPU
+## Optional CUDA environment
 
-Distance-weighted KNN uses scikit-learn on CPU. It requires neither CUDA nor
-PyTorch. Install `requirements.txt`. After the shared runner and independently
-reviewed dataset manifest are available, run the real experiment from the
-repository root:
+For CUDA-capable NVIDIA Linux x86-64 hosts, install the GPU dependency set in a separate
+environment to keep the two XGBoost distributions from sharing an import directory.
 
 ```bash
-python -m ml.trainer --model knn --config configs/models/knn.yaml \
-  --manifest artifacts/data/manifest.json --output experiments/results/knn
+python3.14 -m venv .venv-gpu
+source .venv-gpu/bin/activate
+python -m pip install -r requirements-gpu.txt
+python -m pip check
+nvidia-smi
 ```
 
-The runner uses frozen trip-grouped folds and a separate student-test partition.
-Record scoring latency and peak memory on the machine that ran the experiment.
-
-The proposed Logistic Regression and Random Forest configurations in PR #35
-request CUDA by default. For a CPU run, use a separately recorded config for
-each model with `params.device: cpu` and pass it with `--config`. Keep the
-original hyperparameters and record the actual backend alongside the results.
-
-See the [API deployment guide](deployment/README.md) for fixture startup,
-model bundle loading and two-laptop verification.
+The logistic and random forest configs currently request CUDA. For their CPU
+backend, record a separate config with `params.device: cpu`. The KNN and standalone
+XGBoost factory use CPU. See the [deployment guide](deployment/README.md) for API setup.
