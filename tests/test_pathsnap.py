@@ -1,10 +1,15 @@
+import json
+import re
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
-from map_matching.preprocess import Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, Trip, load_trip
+from map_matching.preprocess import Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, RouteStep, Trip, load_trip
 from map_matching.candidates import rank_candidates
 from map_matching.baseline import nearest_segment_predictions
+from map_matching.demo import write_map
+from map_matching.features import align_reference_route, reference_route_breaks
 from map_matching.inventory import inspect_trip
 
 
@@ -58,6 +63,47 @@ class CandidateTests(unittest.TestCase):
         trip = Trip(trip.trip_id, (invalid,), ((0.0, 0.0),), trip.network, None)
         with self.assertRaisesRegex(ValueError, "out-of-bounds"):
             rank_candidates(trip)
+
+
+class MapTests(unittest.TestCase):
+    def test_rendered_layers_share_coordinate_order_and_world_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "crossing"
+            folder.mkdir()
+            (folder / "crossing.track").write_text("179.875 12 1\n-179.875 12.125 2\n")
+            (folder / "crossing.nodes").write_text("179.875 12\n-179.875 12.125\n")
+            (folder / "crossing.arcs").write_text("0 1\n")
+            (folder / "crossing.route").write_text("0\n")
+            trip = load_trip(folder)
+            path = Path(tmp) / "map.html"
+            write_map(trip, nearest_segment_predictions(trip), path)
+            html = path.read_text(encoding="utf-8")
+
+        self.assertIn("center: [12.0, 179.875]", html)
+        bounds = re.search(r"\.fitBounds\(\s*(\[\[.*?\]\])", html)
+        self.assertEqual(json.loads(bounds.group(1)), [[12, 179.875], [12.125, 180.125]])
+        layers = [json.loads(value) for value in re.findall(r"_add\((\{.*\})\);", html)]
+        geometries = [[feature["geometry"]["coordinates"] for feature in layer["features"]]
+                      for layer in layers]
+        endpoints = [[179.875, 12], [180.125, 12.125]]
+        self.assertEqual(geometries, [[[endpoints]], [[endpoints]], [[endpoints]], endpoints])
+
+
+class AlignmentTests(unittest.TestCase):
+    def test_proposals_require_review_and_flag_discontinuous_reference(self):
+        trip = make_trip()
+        no_reference = align_reference_route(trip)
+        self.assertEqual([row.status for row in no_reference], ["no_reference_route"] * 2)
+
+        continuous = replace(trip, route=(RouteStep(0, 1),))
+        self.assertEqual(reference_route_breaks(continuous), ())
+        self.assertEqual(align_reference_route(continuous)[1].status, "needs_review")
+
+        discontinuous = replace(trip, route=(RouteStep(0, 0), RouteStep(1, 1)))
+        self.assertEqual(reference_route_breaks(discontinuous), (1,))
+        proposal = align_reference_route(discontinuous)[1]
+        self.assertEqual(proposal.reference_arc_id, 1)
+        self.assertEqual(proposal.status, "discontinuous_reference_route")
 
 
 class InventoryTests(unittest.TestCase):

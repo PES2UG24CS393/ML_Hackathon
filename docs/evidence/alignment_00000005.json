@@ -7,10 +7,12 @@
   "max_candidates_per_observation": 8,
   "route_steps": 105,
   "alignment_status_counts": {
-    "accepted": 954,
-    "ambiguous_parallel_or_junction": 91
+    "ambiguous_parallel_or_junction": 91,
+    "needs_review": 954
   },
-  "alignment_rows_accepted_for_manual_review_only": 954,
+  "reference_route_break_before_steps": [],
+  "alignment_rows_needing_review": 954,
+  "training_ready": false,
   "spot_check_rows": [
     {
       "trip_id": "00000005",
@@ -18,7 +20,7 @@
       "route_step_id": 0,
       "reference_arc_id": 176,
       "aligned_distance_m": 1.69385,
-      "status": "accepted"
+      "status": "needs_review"
     },
     {
       "trip_id": "00000005",
@@ -26,7 +28,7 @@
       "route_step_id": 26,
       "reference_arc_id": 197,
       "aligned_distance_m": 6.621838,
-      "status": "accepted"
+      "status": "needs_review"
     },
     {
       "trip_id": "00000005",
@@ -34,7 +36,7 @@
       "route_step_id": 48,
       "reference_arc_id": 205,
       "aligned_distance_m": 5.656524,
-      "status": "accepted"
+      "status": "needs_review"
     },
     {
       "trip_id": "00000005",
@@ -42,7 +44,7 @@
       "route_step_id": 62,
       "reference_arc_id": 248,
       "aligned_distance_m": 7.212167,
-      "status": "accepted"
+      "status": "needs_review"
     },
     {
       "trip_id": "00000005",

@@ -12,13 +12,23 @@ from .preprocess import load_trip
 def write_map(trip, predictions, path):
     import folium
 
-    # GeoJSON uses longitude/latitude, while Folium bounds use latitude/longitude.
-    node_coordinates = [(node.lon, node.lat) for node in trip.network.nodes]
+    # Keep local geometry in the world copy nearest the first GPS fix.
+    # Leaflet can render longitudes outside [-180, 180] in that copy.
+    origin_lon = trip.observations[0].lon
+
+    def display_longitude(lon):
+        if abs(lon - origin_lon) <= 180:
+            return lon
+        return lon + (360 if lon < origin_lon else -360)
+
+    # GeoJSON takes longitude first. Folium's center and bounds take latitude first.
+    node_coordinates = [(display_longitude(node.lon), node.lat) for node in trip.network.nodes]
+    gps_coordinates = [(display_longitude(obs.lon), obs.lat) for obs in trip.observations]
     lines = [
         [node_coordinates[arc.from_node_id], node_coordinates[arc.to_node_id]]
         for arc in trip.network.arcs
     ]
-    track = [(obs.lat, obs.lon) for obs in trip.observations]
+    track = [(lat, lon) for lon, lat in gps_coordinates]
     map_view = folium.Map(location=track[0], zoom_start=14, tiles=None)
     folium.TileLayer("OpenStreetMap", overlay=True).add_to(map_view)
 
@@ -41,7 +51,7 @@ def write_map(trip, predictions, path):
         {"type": "FeatureCollection", "features": [
             {"type": "Feature", "geometry": {"type": "Point", "coordinates": [lon, lat]},
              "properties": {}}
-            for lat, lon in track
+            for lon, lat in gps_coordinates
         ]},
         name="GPS observations",
         marker=folium.CircleMarker(radius=3, color="#1769d2", fill=True, fill_opacity=0.8),
@@ -71,7 +81,6 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run_command(args: argparse.Namespace) -> None:
-
     trip = load_trip(args.trip_dir)
     if not trip.observations:
         raise ValueError("trip has no GPS observations")

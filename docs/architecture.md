@@ -74,4 +74,4 @@ The parser validates coordinate, timestamp, endpoint, and route ID bounds. It re
 
 ## Development map artifact
 
-The CLI writes `<prefix>.json` and `<prefix>.html`. The JSON keeps the reference route in a separate field for development inspection; it is not passed into prediction. Do not send reference labels to the evaluator UI. The Folium HTML displays separate road, GPS, nearest-segment and optional reference-route layers. The reference layer starts hidden. It loads Leaflet and OpenStreetMap tiles over the internet.
+The CLI writes `<prefix>.json` and `<prefix>.html`. The JSON keeps the reference route in a separate field for development inspection; it is not passed into prediction. Do not send reference labels to the evaluator UI. The Folium HTML displays separate road, GPS, nearest-segment and optional reference-route layers. It preserves longitude–latitude order in GeoJSON and uses latitude–longitude for the map center and bounds. Trips crossing the antimeridian share a local world copy across all layers. The reference layer starts hidden. It loads Leaflet and OpenStreetMap tiles over the internet.

@@ -13,7 +13,7 @@ python3 main.py features "data/train/00000005"
 python3 main.py demo "data/train/00000005" --output outputs/trip_00000005
 ```
 
-All 14 tests passed, including parsing all 90 development trips. The checked-in inventory, feature table, and alignment summary are under [evidence](evidence/). The commands regenerate those files along with candidate tables, provisional labels, and demo JSON. Folium generates new internal element IDs on each render. In headless Helium, all four vector layers toggled independently, OpenStreetMap tiles loaded, and no uncaught JavaScript errors occurred. The demo also produced GPS and network layers on a copy of the trip with no reference file and a 0 m cutoff that left every fix unmatched.
+The 16 tests cover all 90 development trips, longitude wrapping in the map, and provisional alignment handling. The checked-in inventory, feature table, and alignment summary are under [evidence](evidence/). The commands regenerate those files along with candidate tables, provisional labels, and demo JSON. Folium generates new internal element IDs on each render. In headless Helium, all four vector layers toggled independently, OpenStreetMap tiles loaded, and no uncaught JavaScript errors occurred. The demo also produced GPS and network layers on a copy of the trip with no reference file and a 0 m cutoff that left every fix unmatched.
 
 ```text
 Trip 00000005: 1045 GPS observations, 898 nodes, 1579 arcs

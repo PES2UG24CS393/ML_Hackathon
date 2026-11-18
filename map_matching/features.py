@@ -117,6 +117,17 @@ def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
     return results
 
 
+def reference_route_breaks(trip: Trip) -> tuple[int, ...]:
+    """Return each route step whose start does not match the previous arc's end."""
+    route = trip.route or ()
+    arcs = trip.network.arcs
+    return tuple(
+        current.row_id
+        for previous, current in zip(route, route[1:])
+        if arcs[previous.arc_id].to_node_id != arcs[current.arc_id].from_node_id
+    )
+
+
 def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
                           ambiguity_margin_m: float = 2.0,
                           skip_penalty_m: float = 0.25, *,
@@ -125,8 +136,8 @@ def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
 
     Dynamic programming assigns observations to nondecreasing route-step positions
     using projected point-to-segment distance. The route is accessed only here,
-    separately from feature extraction. Rows near repeated/parallel route choices,
-    outside the distance gate, or absent from the candidate radius are rejected.
+    separately from feature extraction. Statuses describe review eligibility.
+    A discontinuous reference is flagged even when a proposal passes local checks.
     """
     if not trip.observations:
         return []
@@ -163,12 +174,13 @@ def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
     candidates_by_obs: dict[int, dict[int, float]] = {}
     for row in candidate_rows:
         candidates_by_obs.setdefault(row.obs_id, {})[row.arc_id] = row.distance_m
+    review_status = "discontinuous_reference_route" if reference_route_breaks(trip) else "needs_review"
     output = []
     for i, (obs, chosen_step) in enumerate(zip(trip.observations, alignment)):
         arc_id = route_arc_ids[chosen_step]
         chosen_distance = distances[i][chosen_step]
         alternatives = sorted((d, j) for j, d in enumerate(distances[i]) if j != chosen_step)
-        status = "accepted"
+        status = review_status
         if chosen_distance > labels_radius_m:
             status = "outside_label_radius"
         elif arc_id not in candidates_by_obs.get(obs.obs_id, {}):
