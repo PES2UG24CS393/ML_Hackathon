@@ -51,18 +51,26 @@ def inspect_trip(folder: Path, partition: str) -> dict:
                 for line_no, raw in enumerate(stream, 1):
                     fields = raw.split()
                     if not fields:
+                        row["malformed_records"] += 1
+                        errors.append(f"{ext}:{line_no}:blank row")
                         continue
+                    invalid_coordinate = False
                     try:
                         if len(fields) != widths[ext]:
                             raise ValueError(f"expected {widths[ext]} columns")
+                        invalid_coordinate = False
+                        if ext in ("track", "nodes"):
+                            try:
+                                lon, lat = float(fields[0]), float(fields[1])
+                                invalid_coordinate = (not math.isfinite(lon) or not math.isfinite(lat)
+                                                      or not -180 <= lon <= 180 or not -90 <= lat <= 90)
+                            except ValueError:
+                                invalid_coordinate = True
                         nums = [float(token) for token in fields]
                         if not all(math.isfinite(value) for value in nums):
                             row["non_finite_values"] += sum(not math.isfinite(value) for value in nums)
-                            if ext in ("track", "nodes"):
-                                row["invalid_coordinates"] += 1
                             raise ValueError("non-finite value")
-                        if ext in ("track", "nodes") and not (-180 <= nums[0] <= 180 and -90 <= nums[1] <= 90):
-                            row["invalid_coordinates"] += 1
+                        if invalid_coordinate:
                             raise ValueError("coordinate out of bounds")
                         if ext in ("arcs", "route"):
                             try:
@@ -74,6 +82,8 @@ def inspect_trip(folder: Path, partition: str) -> dict:
                         valid_rows.append(fields)
                     except ValueError as exc:
                         row["malformed_records"] += 1
+                        if ext in ("track", "nodes") and invalid_coordinate:
+                            row["invalid_coordinates"] += 1
                         errors.append(f"{ext}:{line_no}:{exc}")
         except (OSError, UnicodeError) as exc:
             errors.append(f"unreadable:{ext}:{exc}")

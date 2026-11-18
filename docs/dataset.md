@@ -33,10 +33,10 @@ The baseline generates 5,225 candidate rows (Top-5 for all 1,045 fixes) and 1,04
 
 First five Top-1 predictions from the reproducible baseline run:
 
-| Observation ID | Predicted arc ID | Distance (m) | Candidate count |
+| Observation index | Predicted arc ID | Distance (m) | Candidate count |
 |---:|---:|---:|---:|
 | 0 | 176 | 1.694 | 5 |
-| 1 | 176 | 7.127 | 5 |
+| 1 | 176 | 7.128 | 5 |
 | 2 | 173 | 2.505 | 5 |
 | 3 | 173 | 1.872 | 5 |
 | 4 | 173 | 0.903 | 5 |
@@ -45,6 +45,6 @@ These are computed geometrically from the input network and GPS points; no predi
 
 ## File contract and caveats
 
-Whitespace-separated files have no header. `.track` rows are `longitude latitude timestamp`; `.nodes` rows are `longitude latitude`; `.arcs` rows are directed `from_node_id to_node_id`; `.route` contains one arc ID per reference-route row. Node, arc, and observation IDs are zero-based source-row positions. Empty lines do not consume IDs. A malformed nonblank row fails parsing rather than silently shifting IDs.
+Whitespace-separated files have no header. `.track` rows are `longitude latitude timestamp`; `.nodes` rows are `longitude latitude`; `.arcs` rows are directed `from_node_id to_node_id`; `.route` contains one arc ID per reference-route row. Node, arc, and observation IDs are zero-based source-row positions. The shared parser rejects blank or malformed rows rather than silently shifting IDs. The inventory lists malformed data rows and identifies missing optional route files separately.
 
 The inventory script covers only the two checked-in development partitions. The sprint guidelines describe a separate 10-trip evaluator partition, which is not present in this checkout and was not accessed. This report makes no claims about those reserved trips. Duplicate arcs and timing gaps are retained and reported, not silently repaired.
