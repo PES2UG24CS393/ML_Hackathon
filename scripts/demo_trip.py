@@ -8,8 +8,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from pathsnap.preprocess import load_trip
 from pathsnap.baseline import nearest_segment_predictions
+from pathsnap.preprocess import load_trip
 
 
 def main():
@@ -20,19 +20,20 @@ def main():
     args = parser.parse_args()
 
     trip = load_trip(args.trip_dir)
+    if not trip.observations:
+        parser.error("trip has no GPS observations")
     predictions = nearest_segment_predictions(trip, args.max_distance_m)
-    nodes = [{"node_id": node.node_id, "longitude": node.lon, "latitude": node.lat}
-             for node in trip.network.nodes]
-    arcs = [{"arc_id": arc.arc_id, "from_node_id": arc.from_node_id, "to_node_id": arc.to_node_id}
-            for arc in trip.network.arcs]
-    track = [{"observation_index": obs.obs_id, "longitude": obs.lon,
-              "latitude": obs.lat, "timestamp": obs.timestamp_s}
-             for obs in trip.observations]
     payload = {
         "trip_id": trip.trip_id,
-        "track": track,
-        "nodes": nodes,
-        "arcs": arcs,
+        "track": [
+            dict(observation_index=obs.obs_id, longitude=obs.lon, latitude=obs.lat, timestamp=obs.timestamp_s)
+            for obs in trip.observations
+        ],
+        "nodes": [
+            dict(node_id=node.node_id, longitude=node.lon, latitude=node.lat)
+            for node in trip.network.nodes
+        ],
+        "arcs": [arc._asdict() for arc in trip.network.arcs],
         "predictions": predictions,
         # Reference route stays in this development artifact only; it is never used to predict.
         "reference_route": [step.arc_id for step in trip.route] if trip.route is not None else None,
@@ -43,12 +44,12 @@ def main():
     json_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     data = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     html = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PathSnap baseline — TRIP</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>PathSnap baseline</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>html,body,#map{height:100%;margin:0} .legend{background:white;padding:8px 12px;line-height:1.7;font:14px sans-serif}</style></head><body><div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
 const d=DATA; const map=L.map('map').setView([d.track[0].latitude,d.track[0].longitude],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-const roads=L.layerGroup(), gps=L.layerGroup(), matched=L.layerGroup(); const used=new Set(d.predictions.map(p=>p.arc_id).filter(x=>x!==null));
+const roads=L.layerGroup(), gps=L.layerGroup(); const used=new Set(d.predictions.map(p=>p.arc_id).filter(x=>x!==null));
 d.arcs.forEach(a=>{const n1=d.nodes[a.from_node_id],n2=d.nodes[a.to_node_id]; const line=[[n1.latitude,n1.longitude],[n2.latitude,n2.longitude]];
  L.polyline(line,{color:used.has(a.arc_id)?'#df3b32':'#89939d',weight:used.has(a.arc_id)?4:1,opacity:used.has(a.arc_id)?0.85:0.35}).addTo(roads);});
 d.track.forEach(p=>L.circleMarker([p.latitude,p.longitude],{radius:3,color:'#1769d2',fillOpacity:.8}).addTo(gps));
@@ -56,7 +57,7 @@ L.polyline(d.track.map(p=>[p.latitude,p.longitude]),{color:'#1769d2',weight:2,da
 roads.addTo(map);gps.addTo(map); L.control.layers(null,{'Road network / predicted arcs':roads,'Raw GPS':gps}).addTo(map);
 map.fitBounds(L.latLngBounds(d.track.map(p=>[p.latitude,p.longitude])).pad(.08));
 L.control({position:'bottomleft'}).onAdd=function(){const e=L.DomUtil.create('div','legend');e.innerHTML='<b>PathSnap geometric baseline</b><br>Gray: road network<br>Red: selected nearest arcs<br>Blue: observed GPS';return e}.addTo(map);
-</script></body></html>""".replace("TRIP", trip.trip_id).replace("DATA", data)
+</script></body></html>""".replace("const d=DATA;", f"const d={data};")
     html_path.write_text(html, encoding="utf-8")
     matched = sum(p["arc_id"] is not None for p in predictions)
     print(f"Trip {trip.trip_id}: {len(trip.observations)} GPS observations, {len(trip.network.nodes)} nodes, {len(trip.network.arcs)} arcs")
