@@ -1,29 +1,31 @@
 # Parser and baseline handoff contract
 
-This is the shared output agreement for issues #1 and #8. It treats `.route` as reference-only ordered arc IDs; it does not claim that route row `i` labels GPS row `i`.
+The demo uses the shared parser in `pathsnap/preprocess.py` and the geometric baseline in `pathsnap/baseline.py`. `.route` is reference-only ordered arc IDs; a route row is not assumed to label the same-numbered GPS observation.
 
-## Parser output
+## Shared parser output
 
-`load_trip(directory, trip_id=None)` returns `TripData` with:
+`pathsnap.preprocess.load_trip(directory)` returns a `Trip` with:
 
-- `trip_id`: directory name by default.
-- `track`: ordered dictionaries `{observation_index, longitude, latitude, timestamp}`.
-- `nodes`: ordered dictionaries `{node_id, longitude, latitude}`; ID equals the zero-based row number.
-- `arcs`: ordered dictionaries `{arc_id, from_node_id, to_node_id}`; ID equals the zero-based row number.
-- `route`: ordered list of reference `arc_id` values, or `None` if `.route` is absent.
+- `trip_id`: directory name.
+- `observations`: ordered `Observation` records `{obs_id, lon, lat, timestamp_s}`.
+- `observation_xy`: parser-projected metric coordinates in the same order as observations.
+- `network.nodes`: `Node` records `{node_id, lon, lat}` with zero-based row IDs.
+- `network.arcs`: directed `Arc` records `{arc_id, from_node_id, to_node_id}` with zero-based row IDs.
+- `network.segments`: `ArcGeometry` records with projected endpoints in metres.
+- `route`: ordered `RouteStep` records `{row_id, arc_id}`, or `None` when the route file is absent.
 
-Coordinates remain longitude/latitude in degrees in parser output. Arc endpoint and route ID bounds are validated. Blank lines are ignored; columns are whitespace-separated and headerless.
+The parser validates coordinate, timestamp, endpoint, and route ID bounds. It retains coordinates in degrees and supplies projected geometry for metric distance calculations.
 
 ## Baseline output
 
 `nearest_segment_predictions(trip, max_distance_m=250)` returns one record per GPS observation:
 
 ```json
-{"observation_index": 0, "arc_id": 12, "distance_m": 7.231}
+{"obs_id": 0, "arc_id": 12, "distance_m": 7.231}
 ```
 
-`arc_id` and `distance_m` are `null` when no road segment is within the configured cutoff. Distances use a trip-centered equirectangular projection. This is a geometric baseline only; it is not one of the required trained models and does not use `.route`.
+`arc_id` and `distance_m` are `null` if no segment is within the cutoff. This geometric nearest-segment method is a baseline only; it is not a trained ML model and does not use `.route`.
 
 ## Development map artifact
 
-The CLI writes `<prefix>.json` and `<prefix>.html`. The JSON contains parser fields, baseline predictions and a separate `reference_route` field for development visualization/evaluation. Do not send reference labels to the prediction model or evaluator UI. The HTML displays the real network, observed GPS and nearest predicted arcs. It loads Leaflet and OpenStreetMap tiles from the internet.
+The CLI writes `<prefix>.json` and `<prefix>.html`. The JSON keeps the reference route in a separate field for development inspection; it is not passed into prediction. Do not send reference labels to the evaluator UI. The HTML displays the real network, observed GPS and predicted nearest arcs. It loads Leaflet and OpenStreetMap tiles over the internet.
