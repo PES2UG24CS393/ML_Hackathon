@@ -14,18 +14,13 @@ export PATHSNAP_MODEL_DIR=/absolute/path/to/exported-model
 python -m uvicorn api.app:app_factory --factory --host 0.0.0.0 --port 8000
 ```
 
-The export must contain a fitted probability pipeline in `model.joblib` and its
-`manifest.json`. Confirm these filenames and fields with the experiment owner at
-handoff. Match the package versions used when the model was saved, and load only
-trusted artifacts. The runtime reads these manifest fields:
-
-```json
-{
-  "feature_columns": ["distance_m", "heading_diff_deg", "speed_mps", "time_gap_s", "predecessor_connected"],
-  "candidate_policy": {"radius_m": 100, "max_candidates": 8},
-  "decoder_config": {}
-}
-```
+Use the version 1 bundle exported by the tuning runner. It contains
+`pipeline.joblib` (the fitted model and optional probability calibrator) and
+`manifest.json` (bundle and feature versions, ordered columns, SHA-256 digest,
+and dependency versions). Match the export's dependency versions and use
+only trusted artifacts. The Sprint 2 v1 candidate policy uses a 100 m radius
+and at most eight candidates. The real API needs the directed decoder module
+and a trained bundle; fixture mode works before those assets are available.
 
 On Laptop 2, point the UI's `PATHSNAP_API_URL` at Laptop 1's LAN URL. To smoke
 test the connection from Laptop 2, set `PATHSNAP_SERVER` to Laptop 1's LAN IP

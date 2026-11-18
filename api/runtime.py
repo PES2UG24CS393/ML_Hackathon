@@ -1,5 +1,6 @@
 """Load trusted deployment assets and connect scoring, decoding and HTTP."""
 
+import hashlib
 import json
 import logging
 import os
@@ -26,20 +27,26 @@ def configured_app(mode):
     root = Path(os.environ["PATHSNAP_TRIP_ROOT"]).resolve(strict=True)
     bundle = Path(os.environ["PATHSNAP_MODEL_DIR"]).resolve(strict=True)
     manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
-    if manifest["feature_columns"] != list(FEATURES):
-        raise ValueError("Model feature columns differ from the Sprint 2 contract.")
-    candidate = manifest["candidate_policy"]
-    radius = candidate["radius_m"]
-    limit = candidate["max_candidates"]
-    if not np.isfinite(radius) or radius <= 0 or type(limit) is not int or limit <= 0:
-        raise ValueError("Invalid candidate policy.")
+    if (
+        manifest["bundle_version"] != 1
+        or manifest["feature_version"] != "sprint2_v1"
+        or manifest["feature_order"] != list(FEATURES)
+    ):
+        raise ValueError("Unsupported model bundle or feature schema.")
+    pipeline = bundle / "pipeline.joblib"
+    with pipeline.open("rb") as source:
+        if hashlib.file_digest(source, "sha256").hexdigest() != manifest["pipeline_sha256"]:
+            raise ValueError("Model pipeline checksum mismatch.")
+        source.seek(0)
+        model, calibrator = load(source)
     decoder_config = DecoderConfig(**manifest.get("decoder_config", {}))
-    model = load(bundle / "model.joblib")
     positive_column = list(model.classes_).index(1)
     if list(model.classes_) != [0, 1] or not callable(model.predict_proba):
         raise ValueError("Expected a fitted binary probability estimator.")
     if getattr(model, "n_features_in_", len(FEATURES)) != len(FEATURES):
         raise ValueError("Unexpected trained feature count.")
+    if calibrator is not None:
+        calibrated_column = list(calibrator.classes_).index(1)
 
     trips = {
         entry.name: entry
@@ -59,7 +66,7 @@ def configured_app(mode):
             trip = load_trip(trips[trip_id], include_reference=False)
         except ParseError as exc:
             raise AssetsUnavailable("Invalid trip files.") from exc
-        candidates = feature_rows(trip, candidate_radius_m=radius, max_candidates=limit)
+        candidates = feature_rows(trip)
         scores = []
         if candidates:
             matrix = np.asarray(
@@ -69,6 +76,12 @@ def configured_app(mode):
             probabilities = model.predict_proba(matrix)[:, positive_column]
             if not np.isfinite(probabilities).all() or not ((0 <= probabilities) & (probabilities <= 1)).all():
                 raise AssetsUnavailable("Invalid model probabilities.")
+            if calibrator is not None:
+                clipped = np.clip(probabilities, 1e-6, 1 - 1e-6)
+                log_odds = np.log(clipped / (1 - clipped)).reshape(-1, 1)
+                probabilities = calibrator.predict_proba(log_odds)[:, calibrated_column]
+                if not np.isfinite(probabilities).all() or not ((0 <= probabilities) & (probabilities <= 1)).all():
+                    raise AssetsUnavailable("Invalid calibrated probabilities.")
             scores = [
                 {"trip_id": trip_id, "obs_id": row.obs_id, "arc_id": row.arc_id, "p_positive": float(score)}
                 for row, score in zip(candidates, probabilities, strict=True)
