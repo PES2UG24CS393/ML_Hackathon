@@ -6,9 +6,10 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
-from pathsnap import load_trip, nearest_segment_predictions
+from pathsnap.preprocess import load_trip
+from pathsnap.baseline import nearest_segment_predictions
 
 
 def main():
@@ -20,14 +21,21 @@ def main():
 
     trip = load_trip(args.trip_dir)
     predictions = nearest_segment_predictions(trip, args.max_distance_m)
+    nodes = [{"node_id": node.node_id, "longitude": node.lon, "latitude": node.lat}
+             for node in trip.network.nodes]
+    arcs = [{"arc_id": arc.arc_id, "from_node_id": arc.from_node_id, "to_node_id": arc.to_node_id}
+            for arc in trip.network.arcs]
+    track = [{"observation_index": obs.obs_id, "longitude": obs.lon,
+              "latitude": obs.lat, "timestamp": obs.timestamp_s}
+             for obs in trip.observations]
     payload = {
         "trip_id": trip.trip_id,
-        "track": trip.track,
-        "nodes": trip.nodes,
-        "arcs": trip.arcs,
+        "track": track,
+        "nodes": nodes,
+        "arcs": arcs,
         "predictions": predictions,
         # Reference route stays in this development artifact only; it is never used to predict.
-        "reference_route": trip.route,
+        "reference_route": [step.arc_id for step in trip.route] if trip.route is not None else None,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     json_path = args.output.with_suffix(".json")
@@ -51,7 +59,7 @@ L.control({position:'bottomleft'}).onAdd=function(){const e=L.DomUtil.create('di
 </script></body></html>""".replace("TRIP", trip.trip_id).replace("DATA", data)
     html_path.write_text(html, encoding="utf-8")
     matched = sum(p["arc_id"] is not None for p in predictions)
-    print(f"Trip {trip.trip_id}: {len(trip.track)} GPS observations, {len(trip.nodes)} nodes, {len(trip.arcs)} arcs")
+    print(f"Trip {trip.trip_id}: {len(trip.observations)} GPS observations, {len(trip.network.nodes)} nodes, {len(trip.network.arcs)} arcs")
     print(f"Matched within {args.max_distance_m:g} m: {matched}/{len(predictions)} observations")
     print(f"Parser contract JSON: {json_path.resolve()}")
     print(f"Interactive map: {html_path.resolve()}")
