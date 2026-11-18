@@ -9,7 +9,7 @@ import numpy as np
 
 from ml.evaluate import evaluate
 from ml.protocol import FEATURE_ORDER, manifest
-from ml.trainer import main
+from ml.trainer import fit_model, load_inputs, main, score_candidate_rows
 
 
 class FixtureClassifier:
@@ -113,6 +113,35 @@ class ExperimentTests(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate trip"):
                 manifest(spec_path, synthetic=True)
+
+    def test_tuning_is_training_only_and_bundle_scores_round_trip(self):
+        from ml.tune import export_bundle, load_bundle, tune
+
+        with TemporaryDirectory() as path:
+            root = Path(path)
+            spec_path = fixture_inputs(root)
+            _, trips, train, _ = load_inputs(spec_path, True, training_only=True)
+            folds = {key: item["fold_id"] for key, item in trips["train"].items()}
+
+            def factory(seed, params):
+                return FixtureClassifier()
+
+            journal = root / "trials.jsonl"
+            space = {"fixture_parameter": {"type": "int", "low": 1, "high": 4}}
+            params, top1 = tune(factory, {}, 42, train, folds, False, space, 2, journal)
+            self.assertEqual(top1, 0.5)
+            self.assertEqual(len(journal.read_text().splitlines()), 2)
+            train.partition = "student_test"
+            with self.assertRaisesRegex(ValueError, "training partition"):
+                tune(factory, {}, 42, train, folds, False, space, 2, root / "invalid.jsonl")
+            train.partition = "train"
+
+            fitted = fit_model(factory, params, 42, train, folds)
+            bundle = root / "v1"
+            export_bundle(bundle, fitted, {"synthetic": True})
+            original = score_candidate_rows(*fitted[:2], train.candidates)
+            restored = score_candidate_rows(*load_bundle(bundle), train.candidates)
+            self.assertEqual(original, restored)
 
 
 if __name__ == "__main__":
