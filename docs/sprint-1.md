@@ -35,17 +35,17 @@ GitHub snapshot from 2026-11-18. Times are planned elapsed minutes from the spri
 | Issue | Owner | Planned handoff | Status and evidence |
 | --- | --- | --- | --- |
 | [#1 Approach and contracts](https://github.com/PES2UG24CS393/ML_Hackathon/issues/1) | Rahul B | By minute 25 | Closed at 10:55 IST. [Problem and architecture](problem_understanding.md) describes file semantics, reference alignment, and inference. |
-| [#2 Dataset inventory](https://github.com/PES2UG24CS393/ML_Hackathon/issues/2) | @Rajath-N | By minute 25 | Open. The parser test covers bundled trips. Dataset-wide EDA findings are pending. |
+| [#2 Dataset inventory](https://github.com/PES2UG24CS393/ML_Hackathon/issues/2) | @Rajath-N | By minute 25 | The [dataset report](dataset.md) records the development inventory and validation findings from PR #12. |
 | [#3 Parser and network](https://github.com/PES2UG24CS393/ML_Hackathon/issues/3) | @RiteshReddyy | By minute 25 | Closed at 10:40 IST. [PR #9](https://github.com/PES2UG24CS393/ML_Hackathon/pull/9) and the parser tests cover the handoff. |
-| [#4 Candidates and baseline](https://github.com/PES2UG24CS393/ML_Hackathon/issues/4) | @Rajath-N | By minute 40 | Open. The nearest-segment baseline ran in the demo. Reusable ranked candidate output and broader acceptance checks remain pending. |
-| [#5 Features and reference alignment](https://github.com/PES2UG24CS393/ML_Hackathon/issues/5) | R Agilesh | By minute 50 | Open. [The data contract](parser_baseline_contract.md) separates the reference sequence from observations. Candidate labels and alignment validation are pending. |
-| [#6 Model comparison plan](https://github.com/PES2UG24CS393/ML_Hackathon/issues/6) | @RiteshReddyy | By minute 50 | Open. The [sprint plan](../PathSnap_Sprint_1_Plan.md) proposes five candidates and trip-aware metrics. Experiment results are pending. |
+| [#4 Candidates and baseline](https://github.com/PES2UG24CS393/ML_Hackathon/issues/4) | @Rajath-N | By minute 40 | PR #12 adds ranked candidate output and geometric baseline checks. See the [dataset report](dataset.md). |
+| [#5 Features and reference alignment](https://github.com/PES2UG24CS393/ML_Hackathon/issues/5) | R Agilesh | By minute 50 | [PR #14](https://github.com/PES2UG24CS393/ML_Hackathon/pull/14) adds [candidate features and provisional alignment](features.md). Training labels still require validation. |
+| [#6 Model comparison plan](https://github.com/PES2UG24CS393/ML_Hackathon/issues/6) | @RiteshReddyy | By minute 50 | [PR #13](https://github.com/PES2UG24CS393/ML_Hackathon/pull/13) adds the [five-model plan](model_plan.md). Experiment results are pending. |
 | [#7 Interactive map](https://github.com/PES2UG24CS393/ML_Hackathon/issues/7) | R Agilesh | By minute 50 | Closed at 10:56 IST. [PR #11](https://github.com/PES2UG24CS393/ML_Hackathon/pull/11) supplies the Leaflet demo. A separate reference layer is optional for this development rehearsal. |
 | [#8 Integration and rehearsal](https://github.com/PES2UG24CS393/ML_Hackathon/issues/8) | Rahul B | By minute 60 | Open for team review. The README, smoke test, and demo checklist document the integration evidence. |
 
 ## Evening priorities
 
-1. **Validate labels and candidates.** Finish the dataset inventory. Align reference arc sequences to observations on training trips, manually inspect ambiguous cases, and measure how often the candidate set contains the validated arc.
+1. **Validate labels and candidates.** Align reference arc sequences to observations on training trips, manually inspect ambiguous cases, and measure how often the candidate set contains the validated arc.
 2. **Compare five trained models.** Start with logistic regression, KNN, a decision tree, random forest, and XGBoost. Keep each trip within one fold and compare against the geometric baseline using shared candidate and label rules. Use training trips for grouped cross-validation and student-test trips for development comparisons.
 3. **Run Bayesian tuning.** Tune the selected model with trip-grouped validation and compare tuned and untuned metrics and timing.
 4. **Decode routes.** Use classifier scores as HMM emissions and network connectivity and travel feasibility for transitions. Use Viterbi to compare continuity and match quality against independent predictions.
