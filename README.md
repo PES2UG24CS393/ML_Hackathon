@@ -7,44 +7,48 @@ PathSnap is a machine-learning hackathon project that aims to reconstruct vehicl
 - [Parser and baseline contract](docs/parser_baseline_contract.md) describes the shared parser fields and nearest-segment output.
 - [Candidate features and route-label alignment](docs/features.md) documents the inference schema, null rules, and provisional route alignment.
 - [Dataset validation findings](docs/dataset.md) reports development data counts, anomalies, and a verified demo trip.
+- [Five-model experiment plan](docs/model_plan.md) defines the comparison and evaluation protocol.
+- [Viva guide](docs/viva-guide.md) covers the problem, preprocessing, features, model selection, and progress.
 - [Sprint 1 rehearsal and status](docs/sprint-1.md) records the smoke test, demo checklist, and remaining handoffs.
 
 ## Run the Sprint 1 demo
 
-Install Python 3.10 or newer. The parser, baseline, and HTML generator use the Python standard library, so no package installation is needed. Run from the repository root using the bundled development training trip `00000005`.
+Install Python 3.10 or newer. Run from the repository root with the bundled training trip `00000005`. The map generator requires Folium.
 
 Linux and macOS:
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 scripts/demo_trip.py "Student folder/train/00000005" --output outputs/trip_00000005
 ```
 
 Windows PowerShell:
 
 ```powershell
+py -3 -m pip install -r requirements.txt
 py -3 scripts/demo_trip.py "Student folder/train/00000005" --output outputs/trip_00000005
 ```
 
 The command reads `.track`, `.nodes`, and `.arcs`, plus the optional `.route` reference. It reports **1,045 GPS observations, 898 nodes, 1,579 arcs, and 1,045 matches within 250 m** for this trip.
 
-- Open [trip_00000005.html](outputs/trip_00000005.html) in a browser with internet access for Leaflet and OpenStreetMap tiles. Gray shows the road network, red highlights selected arcs, and blue shows observed GPS. Use the layer control to toggle GPS and the combined road network and predictions.
+- Open [trip_00000005.html](outputs/trip_00000005.html) in a browser with internet access for Leaflet and OpenStreetMap tiles. The layer control toggles gray roads, red nearest segments, blue GPS fixes, and the green reference route when supplied. The reference starts hidden.
 - Inspect [trip_00000005.json](outputs/trip_00000005.json) for the parsed data and one prediction per observation. The reference sequence is stored separately in this development artifact.
 
 The baseline selects the nearest segment independently for each observation in the parser’s local metric projection. The 250 m match rate measures coverage within the cutoff. GPS noise, parallel roads, and intersections can lead to the wrong arc, and consecutive predictions can be disconnected. The predictor uses geometry alone, with no training, reference alignment, or route decoding.
 
 ## Dataset validation and ranked candidates
 
-Python 3.10 or newer is required; the scripts use only the Python standard library.
+These commands use the Python standard library. On Windows, replace `python3` with `py -3`.
 
-```powershell
-py -3 scripts/inspect_dataset.py
-py -3 -m unittest discover -s tests -v
-py -3 -m pathsnap.candidates "Student folder/train/00000005" --top-k 5
+```bash
+python3 scripts/inspect_dataset.py
+python3 -m unittest discover -s tests -v
+python3 -m pathsnap.candidates "Student folder/train/00000005" --top-k 5
 ```
 
 The validator scans `Student folder/train` and `Student folder/student_test` only. It writes per-trip results to `reports/dataset_inventory.csv` and partition totals to `reports/validation_summary.json`. It does not modify source data or access evaluator data.
 
-The candidate command writes `reports/baseline/candidates.csv` and `reports/baseline/predictions.csv`, keyed by `(trip_id, observation_index)` and preserving source arc IDs. Candidate rows include rank, distance in metres, and an ambiguity flag; predictions include Top-1, count, and status. The demo command writes an HTML map and JSON with the separate nearest-segment baseline. Neither prediction path uses `.route`.
+The candidate command writes `reports/baseline/candidates.csv` and `reports/baseline/predictions.csv`, keyed by `(trip_id, observation_index)` and preserving source arc IDs. Candidate rows include rank, distance in metres, and an ambiguity flag; predictions include Top-1, count, and status. The ranked command has no distance cutoff. The map demo uses a separate 250 m cutoff to flag unmatched fixes. Both commands print runtime and unmatched counts. Neither prediction path uses `.route`.
 
 The baseline is geometric, not a trained model or sequence decoder. See the linked parser contract and dataset report for schemas, results, and limitations.
 
@@ -52,8 +56,8 @@ The baseline is geometric, not a trained model or sequence decoder. See the link
 
 Generate the representative candidate feature table and separate alignment review files with:
 
-```powershell
-py scripts/build_features.py "Student folder\train\00000005"
+```bash
+python3 scripts/build_features.py "Student folder/train/00000005"
 ```
 
 Route-derived labels are provisional and are not certified for training; see the feature and alignment note before using them.
