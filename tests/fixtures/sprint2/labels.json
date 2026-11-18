@@ -1,0 +1,5 @@
+[
+  {"trip_id":"00000005","obs_id":0,"reference_arc_id":4,"label_status":"validated","review_evidence":"synthetic"},
+  {"trip_id":"00000005","obs_id":1,"reference_arc_id":7,"label_status":"validated","review_evidence":"synthetic"},
+  {"trip_id":"00000005","obs_id":2,"reference_arc_id":null,"label_status":"needs_review","review_evidence":"synthetic"}
+]
