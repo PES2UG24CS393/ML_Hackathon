@@ -39,10 +39,10 @@ def inspect_trip(folder: Path, partition: str) -> dict:
     if empty:
         errors.append("empty:" + ",".join(empty))
 
-    tables: dict[str, list[list[str]]] = {}
+    tables: dict[str, list[list[str] | None]] = {}
     widths = {"track": 3, "nodes": 2, "arcs": 2, "route": 1}
     for ext, path in files.items():
-        valid_rows: list[list[str]] = []
+        valid_rows: list[list[str] | None] = []
         if not path.is_file():
             tables[ext] = valid_rows
             continue
@@ -53,6 +53,7 @@ def inspect_trip(folder: Path, partition: str) -> dict:
                     if not fields:
                         row["malformed_records"] += 1
                         errors.append(f"{ext}:{line_no}:blank row")
+                        valid_rows.append(None)
                         continue
                     invalid_coordinate = False
                     try:
@@ -85,13 +86,16 @@ def inspect_trip(folder: Path, partition: str) -> dict:
                         if ext in ("track", "nodes") and invalid_coordinate:
                             row["invalid_coordinates"] += 1
                         errors.append(f"{ext}:{line_no}:{exc}")
+                        valid_rows.append(None)
         except (OSError, UnicodeError) as exc:
             errors.append(f"unreadable:{ext}:{exc}")
         tables[ext] = valid_rows
-        row[{"track": "track_rows", "nodes": "node_rows", "arcs": "arc_rows", "route": "route_rows"}[ext]] = len(valid_rows)
+        row[{"track": "track_rows", "nodes": "node_rows", "arcs": "arc_rows", "route": "route_rows"}[ext]] = sum(fields is not None for fields in valid_rows)
 
     times = []
     for fields in tables["track"]:
+        if fields is None:
+            continue
         try:
             times.append(float(fields[2]))
         except ValueError:
@@ -106,8 +110,10 @@ def inspect_trip(folder: Path, partition: str) -> dict:
     used = set()
     arcs_seen = Counter()
     for fields in tables["arcs"]:
+        if fields is None:
+            continue
         a, b = map(int, fields)
-        if a >= len(nodes) or b >= len(nodes):
+        if (a >= len(nodes) or b >= len(nodes) or nodes[a] is None or nodes[b] is None):
             row["invalid_references"] += 1
             continue
         used.update((a, b))
@@ -125,9 +131,10 @@ def inspect_trip(folder: Path, partition: str) -> dict:
             parent[rb] = parent[parent[rb]]
             rb = parent[rb]
         parent[ra] = rb
-    row["isolated_nodes"] = len(nodes) - len(used)
+    valid_nodes = {index for index, fields in enumerate(nodes) if fields is not None}
+    row["isolated_nodes"] = len(valid_nodes - used)
     roots = set()
-    for node in range(len(nodes)):
+    for node in valid_nodes:
         root = node
         while parent[root] != root:
             parent[root] = parent[parent[root]]
@@ -135,7 +142,7 @@ def inspect_trip(folder: Path, partition: str) -> dict:
         roots.add(root)
     row["weak_components"] = len(roots)
     for fields in tables["route"]:
-        if int(fields[0]) >= len(tables["arcs"]):
+        if fields is not None and (int(fields[0]) >= len(tables["arcs"]) or tables["arcs"][int(fields[0])] is None):
             row["invalid_references"] += 1
     if errors:
         row["status"] = "invalid"

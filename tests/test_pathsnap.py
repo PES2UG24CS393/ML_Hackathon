@@ -4,16 +4,17 @@ from pathlib import Path
 
 from pathsnap.preprocess import Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, Trip, load_trip
 from pathsnap.candidates import rank_candidates
+from pathsnap.baseline import nearest_segment_predictions
 from scripts.inspect_dataset import inspect_trip
 
 
 def make_trip():
     projection = LocalProjection(0, 0)
     nodes = (Node(0, 0, 0), Node(1, 0.001, 0), Node(2, 0, 0.001), Node(3, 0.001, 0.001))
-    arcs = (Arc(0, 0, 1), Arc(1, 2, 3))
+    arcs = (Arc(0, 0, 1), Arc(1, 2, 3), Arc(2, 0, 1))
     segments = tuple(ArcGeometry(a.arc_id, projection.project(nodes[a.from_node_id].lon, nodes[a.from_node_id].lat),
                                  projection.project(nodes[a.to_node_id].lon, nodes[a.to_node_id].lat)) for a in arcs)
-    network = RoadNetwork(nodes, arcs, segments, ((0,), (), (1,), ()), projection)
+    network = RoadNetwork(nodes, arcs, segments, ((0, 2), (), (1,), ()), projection)
     observations = (Observation(0, 0.0005, 0.0001, 1.0), Observation(1, 0.0005, 0.001, 2.0))
     return Trip("synthetic", observations, tuple(projection.project(o.lon, o.lat) for o in observations), network, None)
 
@@ -24,6 +25,7 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual([p.observation_index for p in predictions], [0, 1])
         self.assertEqual([p.arc_id for p in predictions], [0, 1])
         self.assertEqual([c.rank for c in candidates], [1, 2, 1, 2])
+        self.assertEqual([c.arc_id for c in candidates], [0, 2, 1, 0])
         self.assertTrue(all(c.distance_m >= 0 for c in candidates))
 
     def test_empty_geometry_and_invalid_top_k(self):
@@ -43,6 +45,12 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(candidates)
         self.assertTrue(all(p.arc_id is not None and p.arc_id < len(trip.network.arcs) for p in predictions))
         self.assertEqual([p.observation_index for p in predictions], list(range(len(trip.observations))))
+
+    def test_candidate_top_one_agrees_with_existing_baseline(self):
+        trip = load_trip(Path("Student folder/train/00000005"))
+        _, top_one = rank_candidates(trip, top_k=1)
+        existing = nearest_segment_predictions(trip, max_distance_m=100_000)
+        self.assertEqual([p.arc_id for p in top_one], [p["arc_id"] for p in existing])
 
     def test_rejects_invalid_coordinates_in_direct_api_input(self):
         trip = make_trip()
@@ -65,6 +73,19 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(row["invalid_references"], 1)
             self.assertFalse(row["route_available"])
             self.assertEqual(row["missing_files"], "route")
+
+    def test_inventory_keeps_source_ids_after_malformed_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "x"
+            root.mkdir()
+            (root / "x.track").write_text("0 0 1\n")
+            (root / "x.nodes").write_text("0 0\nbad node\n0.1 0.1\n")
+            (root / "x.arcs").write_text("bad arc\n0 2\n")
+            (root / "x.route").write_text("1\n")
+            row = inspect_trip(root, "train")
+            self.assertEqual(row["malformed_records"], 2)
+            self.assertEqual(row["invalid_references"], 0)
+            self.assertEqual(row["arc_rows"], 1)
 
 
 if __name__ == "__main__":
