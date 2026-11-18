@@ -196,10 +196,10 @@ def parse_route(path: PathLike, arc_count: int) -> tuple[RouteStep, ...]:
     )
 
 
-def load_trip(trip_dir: PathLike) -> Trip:
+def load_trip(trip_dir: PathLike, *, include_reference: bool = True) -> Trip:
     """Load files named after their parent trip directory.
 
-    Required files must exist. A missing route yields None. Invalid rows
+    A missing or explicitly excluded route yields None. Invalid rows
     fail the load with a path, line number and zero-based row ID.
     """
     directory = Path(trip_dir)
@@ -210,10 +210,12 @@ def load_trip(trip_dir: PathLike) -> Trip:
     if not nodes:
         raise ParseError(f"{nodes_path}: expected at least one node")
     arcs = parse_arcs(directory / f"{trip_id}.arcs", len(nodes))
-    try:
-        route = parse_route(directory / f"{trip_id}.route", len(arcs))
-    except FileNotFoundError:
-        route = None
+    route = None
+    if include_reference:
+        try:
+            route = parse_route(directory / f"{trip_id}.route", len(arcs))
+        except FileNotFoundError:
+            pass
 
     latitudes = [node.lat for node in nodes]
     projection = LocalProjection(nodes[0].lon, (min(latitudes) + max(latitudes)) / 2)

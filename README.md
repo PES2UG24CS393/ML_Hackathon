@@ -41,3 +41,26 @@ Run `python main.py --help` for the command list and add `--help` after any comm
 - [Sprint 1 plan](PathSnap_Sprint_1_Plan.md) and [verification status](docs/sprint-1.md)
 - [Architecture and parser contract](docs/architecture.md), [dataset findings](docs/dataset.md), and [feature schema](docs/features.md)
 - [Five-model experiment plan](docs/model_plan.md) and [official assignment guidelines](docs/guidelines/)
+
+## Sprint 2 on CPU
+
+Distance-weighted KNN uses scikit-learn on CPU. It requires neither CUDA nor
+PyTorch. Install `requirements.txt`. After the shared runner and independently
+reviewed dataset manifest are available, run the real experiment from the
+repository root:
+
+```bash
+python -m ml.trainer --model knn --config configs/models/knn.yaml \
+  --manifest artifacts/data/manifest.json --output experiments/results/knn
+```
+
+The runner uses frozen trip-grouped folds and a separate student-test partition.
+Record scoring latency and peak memory on the machine that ran the experiment.
+
+The proposed Logistic Regression and Random Forest configurations in PR #35
+request CUDA by default. For a CPU run, use a separately recorded config for
+each model with `params.device: cpu` and pass it with `--config`. Keep the
+original hyperparameters and record the actual backend alongside the results.
+
+See the [API deployment guide](deployment/README.md) for fixture startup,
+model bundle loading and two-laptop verification.

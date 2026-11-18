@@ -41,6 +41,12 @@ class PreprocessTests(unittest.TestCase):
         route = load_trip(self.trip).route
         self.assertEqual([(step.row_id, step.arc_id) for step in route], [(0, 2), (1, 1), (2, 2)])
 
+    def test_inference_load_skips_reference_file(self):
+        self.write("route", "invalid route")
+        self.assertIsNone(load_trip(self.trip, include_reference=False).route)
+        with self.assertRaises(ParseError):
+            load_trip(self.trip)
+
     def test_invalid_references(self):
         self.write("route", "0\n3\n")
         with self.assertRaisesRegex(ParseError, r"\.route:2 \(row ID 1\): arc_id 3"):
