@@ -1,0 +1,13 @@
+{
+  "trip_id": "00000005",
+  "gps": [[77.60, 12.97], [77.61, 12.97], [77.62, 12.97]],
+  "matches": [{"obs_id":0,"arc_id":4},{"obs_id":1,"arc_id":null},{"obs_id":2,"arc_id":9}],
+  "route_arc_ids": [4,9],
+  "route_parts": [
+    {"arc_ids":[4],"coordinates":[[77.60,12.97],[77.601,12.97]]},
+    {"arc_ids":[9],"coordinates":[[77.62,12.97],[77.621,12.97]]}
+  ],
+  "breaks": [{"obs_id":1,"reason":"no_candidates"}],
+  "elapsed_ms": 5.0,
+  "metrics": null
+}

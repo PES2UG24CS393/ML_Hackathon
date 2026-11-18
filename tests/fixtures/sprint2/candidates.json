@@ -1,0 +1,10 @@
+{
+  "trip_id": "00000005",
+  "obs_ids": [0, 1, 2],
+  "feature_order": ["distance_m", "heading_diff_deg", "speed_mps", "time_gap_s", "predecessor_connected"],
+  "candidates": [
+    {"obs_id":0,"arc_id":4,"features":[4.0,null,null,null,null],"p_positive":0.8},
+    {"obs_id":0,"arc_id":5,"features":[4.0,null,null,null,null],"p_positive":0.2},
+    {"obs_id":2,"arc_id":9,"features":[2.0,15.0,8.0,2.0,null],"p_positive":0.9}
+  ]
+}
