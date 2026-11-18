@@ -1,6 +1,6 @@
 # Candidate classifier comparison and validation plan
 
-This document specifies planned experiments for [issue #6](https://github.com/PES2UG24CS393/ML_Hackathon/issues/6). No preliminary fit was run. The parser and nearest-segment baseline are available, but [issue #5](https://github.com/PES2UG24CS393/ML_Hackathon/issues/5) has yet to deliver an inference-time feature table and validated observation-to-arc labels. An ordered `.route` supplies traversal references without assigning each GPS observation an arc.
+This document specifies planned experiments for [issue #6](https://github.com/PES2UG24CS393/ML_Hackathon/issues/6). The parser, nearest-segment baseline, and [inference-time candidate table](features.md) are available. The provisional observation-to-arc alignment still needs validation across training trips before the first supervised fit. An ordered `.route` supplies traversal references without assigning each GPS observation an arc.
 
 ## Training data and baselines
 
@@ -50,4 +50,17 @@ Use the candidate key and carry forward the positive-class probability `p` for e
 
 Use directed network reachability and movement in meters over elapsed seconds for transitions. Downweight implausible gaps and split the sequence or mark observations unmatched when no feasible transition or candidate is available. Compare classifier-only and classifier-plus-HMM on the same observations using Top-1 and continuity. Report sequence results when ordered reconstructed routes are available.
 
-Each run should save its actual command, commit, feature and label versions, split fingerprint, seeds, candidate settings, parameters, prediction keys, metric supports and timed results. The current blocker for the first supervised run is the validated feature and label handoff from #5.
+Each run should save its actual command, commit, feature and label versions, split fingerprint, seeds, candidate settings, parameters, prediction keys, metric supports and timed results. The current blocker for the first supervised run is validation of the provisional observation-to-arc labels.
+
+## Results template
+
+Fill one row per method and evaluation split after running the experiments. Add rows for tuned and decoded variants. Record metric supports and attach the per-fold results and run metadata. A dash marks an unfilled result. Use “N/A” when a metric cannot be computed for a method.
+
+| Method | Split | Macro F1 | Macro precision / recall | Trip-mean Top-1 | Log loss (raw / calibrated) | Candidate miss rate | Continuity | Inference ms (median / p95) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Nearest segment | CV / student test | — | — | — | N/A | — | — | — |
+| Logistic regression | CV / student test | — | — | — | — | — | — | — |
+| Distance-weighted KNN | CV / student test | — | — | — | — | — | — | — |
+| Decision tree | CV / student test | — | — | — | — | — | — | — |
+| Random forest | CV / student test | — | — | — | — | — | — | — |
+| XGBoost | CV / student test | — | — | — | — | — | — | — |
