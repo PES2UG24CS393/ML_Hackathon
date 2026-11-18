@@ -7,7 +7,7 @@ The final report and release depend on the artifacts and checks below. Record li
 | C0 | Contract, synthetic examples, ownership approval from four owners |
 | C1 | Fixture passes for candidates, runner, decoder and API |
 | C2 | Reviewed labels and versioned manifests with five disjoint training folds |
-| C3 | Five real experiments with fold and student-test measures, plots and timings. Record the KNN GPU and CUDA runtime |
+| C3 | Five real experiments with fold and student-test measures, plots and timings. Record the KNN CPU runtime and peak memory |
 | C4 | Measured Bayesian trials, tuned/untuned comparison, portable model bundle and independent loading check |
 | C5 | Directed HMM comparison, reproducible Folium maps, UI and real inference from Laptop 2 with receiver logs from Laptop 1 |
 | C6 | Fresh public checkout, pinned install, regressions, ten student-test runs, reserved-trip evidence when supplied, PDF and four sign-offs |
