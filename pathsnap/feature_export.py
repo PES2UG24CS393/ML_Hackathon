@@ -6,13 +6,9 @@ import json
 from collections import Counter
 from dataclasses import asdict, fields
 from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from pathsnap.features import CandidateFeature, RouteLabel, align_reference_route, feature_rows
-from pathsnap.preprocess import load_trip
+from .features import CandidateFeature, RouteLabel, align_reference_route, feature_rows
+from .preprocess import load_trip
 
 
 def write_csv(path: Path, rows: list[dict], row_type):
@@ -24,13 +20,14 @@ def write_csv(path: Path, rows: list[dict], row_type):
             writer.writerow({key: "" if value is None else value for key, value in row.items()})
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("trip_dir", type=Path)
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "outputs")
+    parser.add_argument("--output-dir", type=Path, default=Path("outputs"))
     parser.add_argument("--radius-m", type=float, default=100.0)
     parser.add_argument("--max-candidates", type=int, default=8)
-    args = parser.parse_args()
+
+
+def run_command(args: argparse.Namespace) -> None:
 
     trip = load_trip(args.trip_dir)
     features = feature_rows(trip, args.radius_m, args.max_candidates)
@@ -65,7 +62,3 @@ def main():
     print(f"Features: {feature_path}")
     print(f"Reference alignment (separate): {labels_path}")
     print(f"Alignment report: {summary_path}")
-
-
-if __name__ == "__main__":
-    main()

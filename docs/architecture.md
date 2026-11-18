@@ -21,12 +21,9 @@ A candidate is a directed arc that might explain one GPS observation, identified
 
 Investigate a monotonic alignment of GPS observations to positions along the reference traversal. Check alignment quality on representative training trips before using the inferred associations as labels. Record ambiguous associations and distinguish them from candidate misses, where an accepted reference association points to an arc outside the generated candidate set. Keep all observations from the same training trip together in validation splits and reserve evaluator trips for final evaluation.
 
-## Open decisions
+## Sprint 1 implementation
 
-- Determine reference availability by split and examine coordinate validity, timestamp ordering, sampling gaps and directed network connectivity.
-- Validate the alignment method and decide how to handle uncertain or unavailable labels and quantify candidate misses.
-- Choose a metric projection or geodesic distance method, then validate candidate radius or top-K selection on development data. Longitude and latitude differences in degrees cannot be used directly as distances in metres.
-- Decide when to bridge a gap over a plausible directed path, split the route into matched portions, or mark an observation unmatched. Define separate policies for missing candidates and unreachable transitions.
+The [development inventory](dataset.md) documents partition coverage and data quality. The parser uses a local equirectangular projection for metric segment distances. The geometric baseline predicts a closest arc per observation, and the [feature prototype](features.md) exports candidate rows and a separate provisional alignment. Label validation, candidate policy selection, and decoder behavior across gaps or unreachable transitions remain open.
 
 ## Planned inference outputs
 
@@ -51,6 +48,30 @@ Candidate generation narrows the search using distances in metres. Candidate fea
 
 FastAPI runs inference on Laptop 1 and supplies the outputs needed by the map. The UI on Laptop 2 requests an evaluator trip by ID and draws the returned matches and route portions. Where reference data is available for authorized evaluation, the server computes metrics separately from prediction.
 
-## Implementation status
+## Shared parser output
 
-This issue delivers the problem definition, data contract and proposed architecture. Dataset-wide EDA, parsers, candidate generation, label alignment, model experiments, decoding, API and UI are planned work. See the [Sprint 1 plan](../PathSnap_Sprint_1_Plan.md) for acceptance criteria and dependencies.
+`pathsnap.preprocess.load_trip(directory)` returns a `Trip` with:
+
+- `trip_id`: directory name.
+- `observations`: ordered `Observation` records `{obs_id, lon, lat, timestamp_s}`.
+- `observation_xy`: parser-projected metric coordinates in the same order as observations.
+- `network.nodes`: `Node` records `{node_id, lon, lat}` with zero-based row IDs.
+- `network.arcs`: directed `Arc` records `{arc_id, from_node_id, to_node_id}` with zero-based row IDs.
+- `network.segments`: `ArcGeometry` records with projected endpoints in metres.
+- `route`: ordered `RouteStep` records `{row_id, arc_id}`, or `None` when the route file is absent.
+
+The parser validates coordinate, timestamp, endpoint, and route ID bounds. It retains coordinates in degrees and supplies projected geometry for metric distance calculations.
+
+## Baseline output
+
+`nearest_segment_predictions(trip, max_distance_m=250)` returns one record per GPS observation:
+
+```json
+{"obs_id": 0, "arc_id": 12, "distance_m": 7.231}
+```
+
+`arc_id` and `distance_m` are `null` if no segment is within the cutoff. This geometric nearest-segment method is a baseline only; it is not a trained ML model and does not use `.route`.
+
+## Development map artifact
+
+The CLI writes `<prefix>.json` and `<prefix>.html`. The JSON keeps the reference route in a separate field for development inspection; it is not passed into prediction. Do not send reference labels to the evaluator UI. The Folium HTML displays separate road, GPS, nearest-segment and optional reference-route layers. The reference layer starts hidden. It loads Leaflet and OpenStreetMap tiles over the internet.

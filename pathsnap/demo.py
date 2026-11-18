@@ -1,21 +1,17 @@
-"""Generate a real-trip Folium map and JSON from the parser + baseline."""
+"""Generate a Folium map and nearest-segment predictions for a development trip."""
 
 import argparse
 import json
 from pathlib import Path
-import sys
 from time import perf_counter
 
-import folium
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from pathsnap.baseline import nearest_segment_predictions
-from pathsnap.preprocess import load_trip
+from .baseline import nearest_segment_predictions
+from .preprocess import load_trip
 
 
 def write_map(trip, predictions, path):
+    import folium
+
     # GeoJSON uses longitude/latitude, while Folium bounds use latitude/longitude.
     node_coordinates = [(node.lon, node.lat) for node in trip.network.nodes]
     lines = [
@@ -68,22 +64,20 @@ def write_map(trip, predictions, path):
     path.write_text("\n".join(line.rstrip() for line in html.splitlines()) + "\n", encoding="utf-8")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("trip_dir", type=Path, help="Directory containing <trip_id>.* files")
-    parser.add_argument("--output", type=Path, default=Path("outputs/demo"), help="Output filename prefix")
+    parser.add_argument("--output", type=Path, default=Path("outputs/trip"), help="Output filename prefix")
     parser.add_argument("--max-distance-m", type=float, default=250.0)
-    args = parser.parse_args()
 
-    try:
-        trip = load_trip(args.trip_dir)
-        if not trip.observations:
-            parser.error("trip has no GPS observations")
-        started = perf_counter()
-        predictions = nearest_segment_predictions(trip, args.max_distance_m)
-        elapsed = perf_counter() - started
-    except (OSError, ValueError) as exc:
-        parser.error(str(exc))
+
+def run_command(args: argparse.Namespace) -> None:
+
+    trip = load_trip(args.trip_dir)
+    if not trip.observations:
+        raise ValueError("trip has no GPS observations")
+    started = perf_counter()
+    predictions = nearest_segment_predictions(trip, args.max_distance_m)
+    elapsed = perf_counter() - started
     payload = {
         "trip_id": trip.trip_id,
         "track": [
@@ -116,7 +110,3 @@ def main():
     print(f"Unmatched observations: {len(predictions) - matched}; baseline runtime: {elapsed:.3f} s")
     print(f"Parser contract JSON: {json_path.resolve()}")
     print(f"Interactive map: {html_path.resolve()}")
-
-
-if __name__ == "__main__":
-    main()

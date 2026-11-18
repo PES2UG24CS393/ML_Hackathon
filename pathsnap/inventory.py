@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
 """Inventory and validate development trips without changing source data."""
+
 from __future__ import annotations
 
 import argparse
@@ -202,13 +202,10 @@ def run(data_root: Path, output_dir: Path) -> dict:
     return summary
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path("Student folder"))
-    parser.add_argument("--out", type=Path, default=Path("reports"))
-    args = parser.parse_args()
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--data", type=Path, default=Path("data"))
+    parser.add_argument("--out", type=Path, default=Path("outputs"))
+
+
+def run_command(args: argparse.Namespace) -> None:
     print(json.dumps(run(args.data, args.out), indent=2))
-
-
-if __name__ == "__main__":
-    main()

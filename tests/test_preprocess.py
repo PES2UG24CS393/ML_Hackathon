@@ -76,7 +76,7 @@ class PreprocessTests(unittest.TestCase):
 
 class DevelopmentTripTests(unittest.TestCase):
     def test_training_and_student_test_trips(self):
-        root = Path(__file__).resolve().parents[1] / "Student folder"
+        root = Path(__file__).resolve().parents[1] / "data"
         for partition, trip_id in (("train", "00000001"), ("student_test", "00000000")):
             with self.subTest(trip_id=trip_id):
                 trip = load_trip(root / partition / trip_id)

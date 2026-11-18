@@ -5,7 +5,7 @@ from pathlib import Path
 from pathsnap.preprocess import Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, Trip, load_trip
 from pathsnap.candidates import rank_candidates
 from pathsnap.baseline import nearest_segment_predictions
-from scripts.inspect_dataset import inspect_trip
+from pathsnap.inventory import inspect_trip
 
 
 def make_trip():
@@ -39,7 +39,7 @@ class CandidateTests(unittest.TestCase):
             rank_candidates(trip, top_k=0)
 
     def test_real_training_trip_parses_and_preserves_observation_order(self):
-        trip = load_trip(Path("Student folder/train/00000005"))
+        trip = load_trip(Path("data/train/00000005"))
         candidates, predictions = rank_candidates(trip, top_k=3)
         self.assertEqual(len(predictions), len(trip.observations))
         self.assertTrue(candidates)
@@ -47,7 +47,7 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual([p.observation_index for p in predictions], list(range(len(trip.observations))))
 
     def test_candidate_top_one_agrees_with_existing_baseline(self):
-        trip = load_trip(Path("Student folder/train/00000005"))
+        trip = load_trip(Path("data/train/00000005"))
         _, top_one = rank_candidates(trip, top_k=1)
         existing = nearest_segment_predictions(trip, max_distance_m=100_000)
         self.assertEqual([p.arc_id for p in top_one], [p["arc_id"] for p in existing])

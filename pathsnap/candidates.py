@@ -122,12 +122,13 @@ def write_outputs(candidates: list[Candidate], predictions: list[Prediction], ou
                           "" if p.distance_m is None else f"{p.distance_m:.3f}", p.candidate_count, p.status) for p in predictions)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("trip", help="trip directory, e.g. 'Student folder/train/00000005'")
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("trip", help="trip directory, e.g. 'data/train/00000005'")
     parser.add_argument("--top-k", type=int, default=5)
-    parser.add_argument("--out", type=Path, default=Path("reports/baseline"))
-    args = parser.parse_args()
+    parser.add_argument("--out", type=Path, default=Path("outputs"))
+
+
+def run_command(args: argparse.Namespace) -> None:
     trip = load_trip(args.trip)
     started = perf_counter()
     candidates, predictions = rank_candidates(trip, args.top_k)
@@ -140,4 +141,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
+    args = parser.parse_args()
+    try:
+        run_command(args)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))

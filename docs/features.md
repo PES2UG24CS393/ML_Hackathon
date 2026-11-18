@@ -33,8 +33,8 @@ Manual checks sampled observations 0, 261, 522, 783, and 1,044. Their aligned ro
 
 From the repository root:
 
-```powershell
-py scripts/build_features.py "Student folder\train\00000005"
+```bash
+python3 -m pathsnap features "data/train/00000005"
 ```
 
-This writes an inference-only candidate table, a separate provisional alignment CSV, and a JSON report under `outputs/`.
+See the [sample feature table](evidence/features_00000005.csv). The command writes an inference-only candidate table, a separate provisional alignment CSV, and a JSON report under `outputs/`.
