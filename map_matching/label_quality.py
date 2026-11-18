@@ -24,6 +24,8 @@ class ReviewDecision:
     decision: str
     reviewer: str
     review_evidence: str
+    reference_arc_id: int | None = None
+    route_step_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,7 @@ class LabelQuality:
 
 def validate_decision(decision: ReviewDecision, *, candidate_arc_ids: set[int],
                       proposed_arc_id: int | None, aligned_distance_m: float | None,
-                      radius_m: float) -> None:
+                      radius_m: float, allow_candidate_miss: bool = False) -> None:
     """Reject validation decisions that lack provenance or candidate support."""
     if decision.decision not in {"accepted", "rejected"}:
         raise ValueError("review decision must be 'accepted' or 'rejected'")
@@ -54,16 +56,17 @@ def validate_decision(decision: ReviewDecision, *, candidate_arc_ids: set[int],
     if decision.decision == "accepted":
         if proposed_arc_id is None or aligned_distance_m is None:
             raise ValueError("cannot accept a row without a route-derived arc proposal")
-        if proposed_arc_id not in candidate_arc_ids:
+        if proposed_arc_id not in candidate_arc_ids and not allow_candidate_miss:
             raise ValueError("cannot accept a reference arc missing from the candidate set")
-        if aligned_distance_m > radius_m:
+        if aligned_distance_m > radius_m and not allow_candidate_miss:
             raise ValueError("cannot accept an alignment outside the frozen label radius")
 
 
 def label_rows(trip: Trip, candidate_rows: list[CandidateFeature], *,
                radius_m: float = 100.0, ambiguity_margin_m: float = 2.0,
                skip_penalty_m: float = 0.25,
-               decisions: dict[int, ReviewDecision] | None = None) -> list[LabelQuality]:
+               decisions: dict[int, ReviewDecision] | None = None,
+               evaluation_only: bool = False) -> list[LabelQuality]:
     """Return one auditable label/proposal row per source observation."""
     decisions = decisions or {}
     proposals: list[RouteLabel] = align_reference_route(
@@ -83,12 +86,17 @@ def label_rows(trip: Trip, candidate_rows: list[CandidateFeature], *,
         if decision is not None:
             if decision.trip_id != trip.trip_id or decision.obs_id != proposal.obs_id:
                 raise ValueError("review decision key does not match its label row")
+            if decision.reference_arc_id is not None and (
+                decision.reference_arc_id, decision.route_step_id
+            ) != (proposal.reference_arc_id, proposal.route_step_id):
+                raise ValueError(f"review targets a stale proposal: {trip.trip_id}/{proposal.obs_id}")
             validate_decision(
                 decision,
                 candidate_arc_ids=candidates_by_obs.get(proposal.obs_id, set()),
                 proposed_arc_id=proposal.reference_arc_id,
                 aligned_distance_m=proposal.aligned_distance_m,
                 radius_m=radius_m,
+                allow_candidate_miss=evaluation_only,
             )
             status = "validated" if decision.decision == "accepted" else "rejected"
             evidence = decision.review_evidence.strip()
@@ -163,8 +171,9 @@ def sanity_checks(trip: Trip, labels: list[LabelQuality], offsets: tuple[int, ..
             "label_status": row.label_status,
             "geometry_distance_consistent": geometry_match,
             "route_step_order_monotonic": monotonic if row.route_step_id is not None else None,
-            "independent_review": "pending",
-            "review_evidence": "",
+            "independent_review": {"validated": "accepted", "rejected": "rejected"}.get(
+                row.label_status, "pending"),
+            "review_evidence": row.review_evidence,
         })
     return result
 

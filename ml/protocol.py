@@ -5,6 +5,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from hashlib import file_digest
 from importlib import import_module
 from pathlib import Path
 
@@ -90,6 +91,17 @@ def _csv(path):
         yield from csv.DictReader(handle)
 
 
+def _export_file(root, spec, filename):
+    path = root / filename
+    hashes = spec.get("outputs_sha256")
+    if hashes is not None:
+        with path.open("rb") as stream:
+            digest = file_digest(stream, "sha256").hexdigest()
+        if hashes.get(filename) != digest:
+            raise ValueError(f"Artifact hash mismatch: {filename}")
+    return path
+
+
 def _data_export(path, spec):
     if spec["contract_version"] != FEATURE_VERSION or spec["contract_frozen"] is not True:
         raise ValueError("The data export must use the frozen Sprint 2 v1 contract")
@@ -97,7 +109,7 @@ def _data_export(path, spec):
         raise ValueError("The training export must exclude evaluator data")
     if spec["candidate_settings"] != {**CANDIDATE_POLICY, "arc_id_tie_break": "ascending"}:
         raise ValueError("Unexpected candidate policy in the data export")
-    fold_spec = read_config(path.parent / spec["folds_file"])
+    fold_spec = read_config(_export_file(path.parent, spec, spec["folds_file"]))
     if fold_spec["fold_version"] != "trip-grouped-v1" or fold_spec["seed"] != spec["seed"]:
         raise ValueError("The fold file does not match the manifest")
     fold_by_trip = {}
@@ -108,7 +120,7 @@ def _data_export(path, spec):
             fold_by_trip[identifier] = fold["fold_id"]
     source = Path(spec["source_root"]).resolve()
     trips = []
-    for row in _csv(path.parent / spec["trip_assignments_file"]):
+    for row in _csv(_export_file(path.parent, spec, spec["trip_assignments_file"])):
         partition = row["split"]
         identifier = trip_id(row["trip_id"])
         if partition not in PARTITIONS:
@@ -177,7 +189,7 @@ def dataset(root, spec, partition, trips):
     tables = spec["tables"][partition]
     observations = {}
     validated = {}
-    for row in _csv(root / tables["labels"]):
+    for row in _csv(_export_file(root, spec, tables["labels"])):
         key = trip_id(row["trip_id"]), source_id(row["obs_id"])
         if key[0] not in trips or key in observations:
             raise ValueError(f"Unexpected or duplicate observation: {key}")
@@ -193,7 +205,7 @@ def dataset(root, spec, partition, trips):
         raise ValueError("Label table must cover each manifest trip")
     candidates = []
     seen = set()
-    for row in _csv(root / tables["features"]):
+    for row in _csv(_export_file(root, spec, tables["features"])):
         identifier = trip_id(row["trip_id"])
         obs_id = source_id(row["obs_id"])
         arc_id = source_id(row["arc_id"])
