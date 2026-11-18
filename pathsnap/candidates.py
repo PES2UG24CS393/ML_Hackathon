@@ -8,6 +8,7 @@ import argparse
 import csv
 import math
 
+from .baseline import _segment_distance
 from .preprocess import ArcGeometry, Trip, load_trip
 
 
@@ -32,15 +33,7 @@ class Prediction:
 
 
 def _distance(point: tuple[float, float], segment: ArcGeometry) -> float:
-    px, py = point
-    ax, ay = segment.start_xy
-    bx, by = segment.end_xy
-    dx, dy = bx - ax, by - ay
-    length_squared = dx * dx + dy * dy
-    if length_squared == 0:
-        return math.hypot(px - ax, py - ay)
-    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_squared))
-    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+    return _segment_distance(point, segment.start_xy, segment.end_xy)
 
 
 class _SegmentGrid:
