@@ -1,6 +1,8 @@
 import csv
 import json
 from pathlib import Path
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -140,8 +142,22 @@ class ExperimentTests(unittest.TestCase):
             bundle = root / "v1"
             export_bundle(bundle, fitted, {"synthetic": True})
             original = score_candidate_rows(*fitted[:2], train.candidates)
-            restored = score_candidate_rows(*load_bundle(bundle), train.candidates)
+            restored = score_candidate_rows(load_bundle(bundle), None, train.candidates)
             self.assertEqual(original, restored)
+            metadata = json.loads((bundle / "manifest.json").read_text())
+            self.assertEqual(metadata["feature_columns"], list(FEATURE_ORDER))
+            self.assertEqual(metadata["candidate_policy"], {"radius_m": 100, "max_candidates": 8})
+            child = subprocess.run(
+                [sys.executable, "-B", "-c",
+                 "import sys; sys.path.insert(0, sys.argv[1]); "
+                 "import numpy as np; "
+                 "from joblib import load; "
+                 "m = load(sys.argv[2]); "
+                 "print(m.predict_proba(np.array([[2.0, 0, 0, 0, 0]]))[0, 1])",
+                 str(Path(__file__).parent), str(bundle / "model.joblib")],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertEqual(float(child.stdout.strip()), 0.8)
 
 
 if __name__ == "__main__":

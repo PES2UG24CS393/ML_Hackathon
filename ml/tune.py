@@ -14,6 +14,7 @@ from time import perf_counter
 import joblib
 
 from .protocol import FEATURE_ORDER, FEATURE_VERSION, dataset, model_factory, read_config
+from .serving import CandidateProbabilityModel
 from .trainer import _score, fit_model, load_inputs, run_cv, score_candidate_rows, write_result
 
 FAMILIES = {"logistic", "random_forest", "knn", "decision_tree", "xgboost"}
@@ -22,6 +23,7 @@ COMPARISON_METRICS = (
     "candidate_miss_rate", "continuity", "candidate_support", "validated",
     "top1_trip_support", "continuity_pairs",
 )
+CANDIDATE_POLICY = {"radius_m": 100, "max_candidates": 8}
 
 
 def read_runs(paths, manifest_hash, folds):
@@ -186,16 +188,18 @@ def export_bundle(path, fitted, metadata):
     """Publish a complete bundle in one rename at a new versioned destination."""
     if path.exists():
         raise FileExistsError(f"Model bundle already exists: {path}")
+    if metadata.get("candidate_policy", CANDIDATE_POLICY) != CANDIDATE_POLICY:
+        raise ValueError("Model candidate policy differs from Sprint 2 v1")
     path.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=path.parent) as temp:
         source = Path(temp) / "bundle"
         source.mkdir()
         model, calibrator, _ = fitted
-        model_path = source / "pipeline.joblib"
-        joblib.dump((model, calibrator), model_path, compress=3)
+        model_path = source / "model.joblib"
+        joblib.dump(CandidateProbabilityModel(model, calibrator), model_path, compress=3)
         _json(source / "manifest.json", {
             **metadata, "bundle_version": 1, "feature_version": FEATURE_VERSION,
-            "feature_order": list(FEATURE_ORDER),
+            "feature_columns": list(FEATURE_ORDER), "candidate_policy": CANDIDATE_POLICY,
             "pipeline_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
         })
         source.rename(path)
@@ -206,9 +210,10 @@ def load_bundle(path):
     path = Path(path)
     spec = read_config(path / "manifest.json")
     if (spec["bundle_version"] != 1 or spec["feature_version"] != FEATURE_VERSION
-            or tuple(spec["feature_order"]) != FEATURE_ORDER):
+            or tuple(spec["feature_columns"]) != FEATURE_ORDER
+            or spec["candidate_policy"] != CANDIDATE_POLICY):
         raise ValueError("Unsupported bundle or feature schema")
-    model_path = path / "pipeline.joblib"
+    model_path = path / "model.joblib"
     if hashlib.sha256(model_path.read_bytes()).hexdigest() != spec["pipeline_sha256"]:
         raise ValueError("Pipeline checksum mismatch")
     return joblib.load(model_path)
@@ -226,6 +231,8 @@ def main(argv=None):
 
     digest = hashlib.sha256(args.manifest.read_bytes()).hexdigest()
     spec, trips, train, _ = load_inputs(args.manifest, training_only=True)
+    if spec.get("candidate_policy", CANDIDATE_POLICY) != CANDIDATE_POLICY:
+        raise ValueError("Data manifest candidate policy differs from Sprint 2 v1")
     folds = {key: item["fold_id"] for key, item in trips["train"].items()}
     runs = read_runs(args.runs, digest, folds)
     winner = select(runs)
@@ -261,9 +268,11 @@ def main(argv=None):
               "cv": cv, "student_test": student_metrics}
     write_result(args.output, result, cv_scores=scores, student_test_scores=student_scores)
     export_bundle(args.bundle, fitted, metadata)
-    model, calibrator = load_bundle(args.bundle)
+    model = load_bundle(args.bundle)
     sample = student.candidates[:32]
-    if score_candidate_rows(model, calibrator, sample) != score_candidate_rows(*fitted[:2], sample):
+    expected = score_candidate_rows(*fitted[:2], sample)
+    restored = score_candidate_rows(model, None, sample)
+    if [row["p_positive"] for row in restored] != [row["p_positive"] for row in expected]:
         raise RuntimeError("Exported pipeline failed probability parity")
     print(args.bundle / "manifest.json")
 
