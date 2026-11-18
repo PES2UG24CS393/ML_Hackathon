@@ -1,0 +1,10 @@
+seed: 42
+calibrate: false
+params:
+  device: cuda
+  num_parallel_tree: 200
+  max_depth: 8
+  min_child_weight: 5
+  subsample: 0.8
+  colsample_bynode: 0.6
+  reg_lambda: 1.0
