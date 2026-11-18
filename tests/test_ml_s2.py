@@ -1,0 +1,119 @@
+import csv
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+
+from ml.evaluate import evaluate
+from ml.protocol import FEATURE_ORDER, manifest
+from ml.trainer import main
+
+
+class FixtureClassifier:
+    def fit(self, X, y):
+        self.classes_ = np.array([1, 0])
+        self.min_distance_ = float(X[:, 0].min())
+        return self
+
+    def predict_proba(self, X):
+        p = np.where(X[:, 0] <= self.min_distance_, 0.8, 0.2)
+        return np.column_stack((p, 1 - p))
+
+
+def write_csv(path, columns, rows):
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(columns)
+        writer.writerows(rows)
+
+
+def fixture_inputs(root):
+    trips = []
+    tables = {}
+    for partition, numbers in (("train", range(1, 6)), ("student_test", [6])):
+        candidate_rows, labels = [], []
+        for number in numbers:
+            identifier = f"{number:08d}"
+            trips.append({"trip_id": identifier, "partition": partition,
+                          "fold_id": number - 1 if partition == "train" else None})
+            candidate_rows.extend([
+                [identifier, 0, 4, 2.0, "", "", "", ""],
+                [identifier, 0, 5, 9.0, "", "", "", ""],
+            ])
+            labels.extend([[identifier, 0, 4, "validated", "synthetic"],
+                           [identifier, 1, 7, "validated", "synthetic"],
+                           [identifier, 2, "", "needs_review", "synthetic"]])
+        tables[partition] = {"features": f"{partition}_features.csv",
+                             "labels": f"{partition}_labels.csv"}
+        write_csv(root / tables[partition]["features"],
+                  ["trip_id", "obs_id", "arc_id", *FEATURE_ORDER], candidate_rows)
+        write_csv(root / tables[partition]["labels"],
+                  ["trip_id", "obs_id", "reference_arc_id", "label_status", "review_evidence"], labels)
+    spec = {"synthetic": True, "training_ready": False, "feature_order": FEATURE_ORDER,
+            "feature_version": "sprint2_v1", "label_version": "fixture",
+            "manifest_version": "fixture", "split_seed": 42, "trips": trips, "tables": tables}
+    path = root / "manifest.json"
+    path.write_text(json.dumps(spec), encoding="utf-8")
+    return path
+
+
+class ExperimentTests(unittest.TestCase):
+    def test_ties_misses_and_denominators(self):
+        trip = "00000001"
+        keys = [(trip, i) for i in range(3)]
+        rows = [{"trip_id": trip, "obs_id": 0, "arc_id": arc, "p_positive": 0.8}
+                for arc in [5, 4]]
+        result = evaluate(rows, keys, {keys[0]: 4, keys[1]: 7})
+        self.assertEqual(result["top1"], 0.5)
+        self.assertEqual(result["candidate_miss_rate"], 0.5)
+        self.assertEqual(result["candidate_support"], 2)
+        self.assertEqual(result["confusion_matrix"], [[0, 1], [0, 1]])
+        self.assertEqual(result["empty_candidates"], 2)
+        self.assertIsNone(result["continuity"])
+
+    def test_cli_fixture_has_disjoint_folds_and_separate_student_test(self):
+        with TemporaryDirectory() as path:
+            root = Path(path)
+            manifest_path = fixture_inputs(root)
+            with self.assertRaisesRegex(ValueError, "explicit"):
+                manifest(manifest_path)
+            config = root / "config.json"
+            config.write_text('{"seed": 42}', encoding="utf-8")
+            out = root / "out"
+            fit_calls = []
+
+            class TrackingClassifier(FixtureClassifier):
+                def fit(self, X, y):
+                    fit_calls.append((len(X), X.copy()))
+                    return super().fit(X, y)
+
+            args = ["--model", "fixture", "--config", str(config), "--manifest",
+                    str(manifest_path), "--output", str(out), "--synthetic"]
+            with patch("ml.trainer.model_factory",
+                       return_value=lambda seed, params: TrackingClassifier()):
+                main(args)
+            result = json.loads((out / "metrics.json").read_text())
+            self.assertEqual([size for size, _ in fit_calls], [8] * 5 + [10])
+            self.assertTrue(all(np.isnan(X[:, 1:]).all() for _, X in fit_calls))
+            self.assertEqual(result["cv"]["pooled"]["validated"], 10)
+            self.assertEqual(result["student_test"]["top1"], 0.5)
+            for fold in result["cv"]["folds"]:
+                self.assertFalse(set(fold["train_trips"]) & set(fold["validation_trips"]))
+                self.assertNotIn("00000006", fold["validation_trips"])
+            self.assertTrue((out / "cv_scores.csv").is_file())
+
+    def test_manifest_rejects_cross_partition_duplicates(self):
+        with TemporaryDirectory() as path:
+            spec_path = fixture_inputs(Path(path))
+            spec = json.loads(spec_path.read_text())
+            spec["trips"][-1]["trip_id"] = spec["trips"][0]["trip_id"]
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate trip"):
+                manifest(spec_path, synthetic=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
