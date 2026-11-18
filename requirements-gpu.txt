@@ -1,0 +1,17 @@
+# Use in a separate environment on NVIDIA CUDA-capable Linux.
+-c constraints-cpu.txt
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.1
+xgboost==3.2.0
+PyYAML==6.0.3
+optuna==4.8.0
+joblib==1.5.3
+matplotlib==3.10.9
+folium==0.20.0
+fastapi==0.115.12
+pydantic==2.12.5
+uvicorn==0.34.2
+httpx==0.28.1
+
+nvidia-nccl-cu12==2.32.6
