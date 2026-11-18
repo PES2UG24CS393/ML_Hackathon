@@ -77,7 +77,9 @@ class _SegmentGrid:
                 left, right = (gx - radius) * self.cell, (gx + radius + 1) * self.cell
                 bottom, upper = (gy - radius) * self.cell, (gy + radius + 1) * self.cell
                 outside_lower_bound = min(px - left, right - px, py - bottom, upper - py)
-                if scored[top_k - 1][0] <= outside_lower_bound:
+                # Strict inequality keeps searching when a boundary tie could
+                # still be won by an unseen segment with a lower source ID.
+                if scored[top_k - 1][0] < outside_lower_bound:
                     return scored[:top_k]
         return scored[:top_k]
 
