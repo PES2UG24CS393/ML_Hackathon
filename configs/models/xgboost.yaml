@@ -1,0 +1,15 @@
+# S2-A1 baseline; explicit CPU histogram backend, positive candidate class is 1.
+model: xgboost
+seed: 42
+params:
+  n_estimators: 200
+  max_depth: 4
+  learning_rate: 0.05
+  subsample: 0.9
+  colsample_bytree: 0.9
+  reg_lambda: 1.0
+  objective: binary:logistic
+  eval_metric: logloss
+  tree_method: hist
+  device: cpu
+  n_jobs: 1

@@ -15,7 +15,7 @@ from time import perf_counter
 import joblib
 import numpy as np
 
-from .protocol import FEATURE_ORDER, FEATURE_VERSION, dataset, model_factory, read_config
+from .protocol import CANDIDATE_POLICY, FEATURE_ORDER, FEATURE_VERSION, dataset, model_factory, read_config
 from .trainer import _score, fit_model, load_inputs, run_cv, score_candidate_rows, write_result
 
 FAMILIES = {"logistic", "random_forest", "knn", "decision_tree", "xgboost"}
@@ -24,7 +24,6 @@ COMPARISON_METRICS = (
     "candidate_miss_rate", "continuity", "candidate_support", "validated",
     "top1_trip_support", "continuity_pairs",
 )
-CANDIDATE_POLICY = {"radius_m": 100, "max_candidates": 8}
 
 
 def read_runs(paths, manifest_hash, folds):

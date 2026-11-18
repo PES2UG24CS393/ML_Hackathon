@@ -44,7 +44,7 @@ def _candidate_metrics(truth, probabilities):
 def _continuity(scores, trip_dir):
     from map_matching.preprocess import load_trip
 
-    trip = load_trip(trip_dir)
+    trip = load_trip(trip_dir, include_reference=False)
     network = trip.network
 
     @lru_cache(maxsize=4096)
