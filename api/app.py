@@ -125,4 +125,9 @@ def fixture_app() -> FastAPI:
     return create_app((data["trip_id"],), lambda _: result.model_copy(deep=True), mode="demo")
 
 
-app = fixture_app() if os.environ.get("PATHSNAP_MODE") == "fixture" else create_app()
+def app_factory() -> FastAPI:
+    if os.environ.get("PATHSNAP_MODE") == "fixture":
+        return fixture_app()
+    from .runtime import app_from_environment
+
+    return app_from_environment()
