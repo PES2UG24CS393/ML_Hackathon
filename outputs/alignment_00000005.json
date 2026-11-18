@@ -1,0 +1,57 @@
+{
+  "trip_id": "00000005",
+  "feature_rows": 4025,
+  "observations": 1045,
+  "observations_without_candidates": 0,
+  "candidate_radius_m": 100.0,
+  "max_candidates_per_observation": 8,
+  "route_steps": 105,
+  "alignment_status_counts": {
+    "accepted": 954,
+    "ambiguous_parallel_or_junction": 91
+  },
+  "alignment_rows_accepted_for_manual_review_only": 954,
+  "spot_check_rows": [
+    {
+      "trip_id": "00000005",
+      "obs_id": 0,
+      "route_step_id": 0,
+      "reference_arc_id": 176,
+      "aligned_distance_m": 1.69385,
+      "status": "accepted"
+    },
+    {
+      "trip_id": "00000005",
+      "obs_id": 261,
+      "route_step_id": 26,
+      "reference_arc_id": 197,
+      "aligned_distance_m": 6.621838,
+      "status": "accepted"
+    },
+    {
+      "trip_id": "00000005",
+      "obs_id": 522,
+      "route_step_id": 48,
+      "reference_arc_id": 205,
+      "aligned_distance_m": 5.656524,
+      "status": "accepted"
+    },
+    {
+      "trip_id": "00000005",
+      "obs_id": 783,
+      "route_step_id": 62,
+      "reference_arc_id": 248,
+      "aligned_distance_m": 7.212167,
+      "status": "accepted"
+    },
+    {
+      "trip_id": "00000005",
+      "obs_id": 1044,
+      "route_step_id": 104,
+      "reference_arc_id": 328,
+      "aligned_distance_m": 21.220138,
+      "status": "ambiguous_parallel_or_junction"
+    }
+  ],
+  "training_label_readiness": "not ready: route alignment is a proposal; labels need manual map/sequence review and validation on multiple trips"
+}
