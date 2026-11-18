@@ -248,4 +248,4 @@ When this file is supplied in a future chat, treat it as the *Sprint 1 proposed 
 
 ### Repository layout update (2026-11-18)
 
-The developer entry point is `python -m pathsnap`. Development inputs live in `data/`. The assignment PDFs live in `docs/guidelines/`, representative evidence lives in `docs/evidence/`, and regenerated files go to `outputs/`. See the [current README](README.md) for commands and [Sprint 1 status](docs/sprint-1.md) for acceptance evidence.
+The developer entry point is `python main.py`. Development inputs live in `data/`. The assignment PDFs live in `docs/guidelines/`, representative evidence lives in `docs/evidence/`, and regenerated files go to `outputs/`. See the [current README](README.md) for commands and [Sprint 1 status](docs/sprint-1.md) for acceptance evidence.

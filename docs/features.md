@@ -2,7 +2,7 @@
 
 ## Inference feature contract
 
-`pathsnap.features.feature_rows(trip, candidate_radius_m=100, max_candidates=8)` uses only the parsed GPS observations and road network. It never reads `trip.route`. It returns one row for each retained `(trip_id, obs_id, arc_id)` candidate, sorted by observation, then distance, then arc ID. Candidate segments are those within 100 m, capped to the 8 closest candidates per observation. An observation with no segment in the radius has no candidate row and is recorded as a candidate miss by the CLI.
+`map_matching.features.feature_rows(trip, candidate_radius_m=100, max_candidates=8)` uses only the parsed GPS observations and road network. It never reads `trip.route`. It returns one row for each retained `(trip_id, obs_id, arc_id)` candidate, sorted by observation, then distance, then arc ID. Candidate segments are those within 100 m, capped to the 8 closest candidates per observation. An observation with no segment in the radius has no candidate row and is recorded as a candidate miss by the CLI.
 
 | Field | Type | Unit / meaning | Missing-value rule |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Manual checks sampled observations 0, 261, 522, 783, and 1,044. Their aligned ro
 From the repository root:
 
 ```bash
-python3 -m pathsnap features "data/train/00000005"
+python3 main.py features "data/train/00000005"
 ```
 
 See the [sample feature table](evidence/features_00000005.csv). The command writes an inference-only candidate table, a separate provisional alignment CSV, and a JSON report under `outputs/`.

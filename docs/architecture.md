@@ -50,7 +50,7 @@ FastAPI runs inference on Laptop 1 and supplies the outputs needed by the map. T
 
 ## Shared parser output
 
-`pathsnap.preprocess.load_trip(directory)` returns a `Trip` with:
+`map_matching.preprocess.load_trip(directory)` returns a `Trip` with:
 
 - `trip_id`: directory name.
 - `observations`: ordered `Observation` records `{obs_id, lon, lat, timestamp_s}`.

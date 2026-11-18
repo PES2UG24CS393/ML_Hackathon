@@ -2,11 +2,11 @@
 
 import argparse
 
-from . import candidates, demo, feature_export, inventory
+from map_matching import candidates, demo, feature_export, inventory
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="python -m pathsnap", description=__doc__)
+    parser = argparse.ArgumentParser(prog="python main.py", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name, module in (
         ("inspect", inventory),

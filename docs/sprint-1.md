@@ -7,10 +7,10 @@ Verified on 2026-11-18 with the bundled training trip. Run from the repository r
 ```bash
 python3 -m pip install -r requirements.txt
 python3 -m unittest discover -s tests -v
-python3 -m pathsnap inspect
-python3 -m pathsnap candidates "data/train/00000005" --top-k 5
-python3 -m pathsnap features "data/train/00000005"
-python3 -m pathsnap demo "data/train/00000005" --output outputs/trip_00000005
+python3 main.py inspect
+python3 main.py candidates "data/train/00000005" --top-k 5
+python3 main.py features "data/train/00000005"
+python3 main.py demo "data/train/00000005" --output outputs/trip_00000005
 ```
 
 All 14 tests passed, including parsing all 90 development trips. The checked-in inventory, feature table, and alignment summary are under [evidence](evidence/). The commands regenerate those files along with candidate tables, provisional labels, and demo JSON. Folium generates new internal element IDs on each render. In headless Helium, all four vector layers toggled independently, OpenStreetMap tiles loaded, and no uncaught JavaScript errors occurred. The demo also produced GPS and network layers on a copy of the trip with no reference file and a 0 m cutoff that left every fix unmatched.

@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pathsnap.preprocess import Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, Trip, load_trip
-from pathsnap.candidates import rank_candidates
-from pathsnap.baseline import nearest_segment_predictions
-from pathsnap.inventory import inspect_trip
+from map_matching.preprocess import Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, Trip, load_trip
+from map_matching.candidates import rank_candidates
+from map_matching.baseline import nearest_segment_predictions
+from map_matching.inventory import inspect_trip
 
 
 def make_trip():

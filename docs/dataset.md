@@ -1,6 +1,6 @@
 # Development dataset inventory and validation
 
-The 2026-11-18 inventory covers `data/train` and `data/student_test`. Run `python3 -m pathsnap inspect` to write per-trip results to `outputs/dataset_inventory.csv` and aggregate results to `outputs/validation_summary.json`. The [checked-in inventory](evidence/dataset_inventory.csv) preserves the per-trip evidence. It reads no evaluator data and does not modify the original files.
+The 2026-11-18 inventory covers `data/train` and `data/student_test`. Run `python3 main.py inspect` to write per-trip results to `outputs/dataset_inventory.csv` and aggregate results to `outputs/validation_summary.json`. The [checked-in inventory](evidence/dataset_inventory.csv) preserves the per-trip evidence. It reads no evaluator data and does not modify the original files.
 
 ## Inventory summary
 

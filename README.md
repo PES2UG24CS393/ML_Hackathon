@@ -10,7 +10,7 @@ Use Python 3.10 or newer. From the repository root, create and activate a virtua
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m pathsnap demo data/train/00000005 --output outputs/trip_00000005
+python main.py demo data/train/00000005 --output outputs/trip_00000005
 ```
 
 On Windows PowerShell, use `py -3 -m venv .venv` and `.venv\Scripts\Activate.ps1`, then run the same install and demo commands.
@@ -20,19 +20,20 @@ Open `outputs/trip_00000005.html` or the [checked-in map](docs/evidence/trip_000
 ## Inspect data, candidates, and features
 
 ```bash
-python -m pathsnap inspect
-python -m pathsnap candidates data/train/00000005 --top-k 5
-python -m pathsnap features data/train/00000005
+python main.py inspect
+python main.py candidates data/train/00000005 --top-k 5
+python main.py features data/train/00000005
 python -m unittest discover -s tests -v
 ```
 
-Run `python -m pathsnap --help` for the command list and add `--help` after any command for its options. Reports and demo files are generated in the ignored `outputs/` directory. The inventory scans only `data/train` and `data/student_test`. The ranked candidate command uses an uncapped search for Top-K. The map baseline uses a 250 m cutoff, and the feature extractor defaults to 100 m and up to eight candidates. The feature command exports the inference table separately from the provisional alignment.
+Run `python main.py --help` for the command list and add `--help` after any command for its options. Reports and demo files are generated in the ignored `outputs/` directory. The inventory scans only `data/train` and `data/student_test`. The ranked candidate command uses an uncapped search for Top-K. The map baseline uses a 250 m cutoff, and the feature extractor defaults to 100 m and up to eight candidates. The feature command exports the inference table separately from the provisional alignment.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `pathsnap/` | CLI, trip parser, candidate ranking, baseline, features, inventory, and Folium rendering |
+| `main.py` and `__init__.py` | CLI entry point and root package initializer |
+| `map_matching/` | Trip parser, candidate ranking, baseline, features, inventory, and Folium rendering |
 | `data/` | Original development files organised by partition and trip |
 | `docs/` | Architecture, viva guide, experiment plan, official guidelines, and representative evidence |
 | `tests/` | Parser, candidate, and inventory tests |

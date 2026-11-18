@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from pathsnap.preprocess import LocalProjection, ParseError, load_trip
+from map_matching.preprocess import LocalProjection, ParseError, load_trip
 
 
 class PreprocessTests(unittest.TestCase):
