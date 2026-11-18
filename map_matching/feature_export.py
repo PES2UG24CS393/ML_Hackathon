@@ -9,6 +9,8 @@ from pathlib import Path
 
 from .features import (
     CandidateFeature,
+    FEATURE_CANDIDATE_RADIUS_M,
+    FEATURE_MAX_CANDIDATES,
     RouteLabel,
     align_reference_route,
     feature_rows,
@@ -29,8 +31,8 @@ def write_csv(path: Path, rows: list[dict], row_type):
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("trip_dir", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("outputs"))
-    parser.add_argument("--radius-m", type=float, default=100.0)
-    parser.add_argument("--max-candidates", type=int, default=8)
+    parser.add_argument("--radius-m", type=float, default=FEATURE_CANDIDATE_RADIUS_M)
+    parser.add_argument("--max-candidates", type=int, default=FEATURE_MAX_CANDIDATES)
 
 
 def run_command(args: argparse.Namespace) -> None:

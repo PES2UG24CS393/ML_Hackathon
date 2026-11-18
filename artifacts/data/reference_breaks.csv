@@ -1,0 +1,15 @@
+split,trip_id,break_before_route_step_id,previous_arc_id,current_arc_id,previous_to_node_id,current_from_node_id,status
+train,00000002,54,1848,10863,5059,5289,discontinuous_reference_route
+train,00000019,95,85589,51027,849,23488,discontinuous_reference_route
+train,00000019,152,55059,55050,25413,25408,discontinuous_reference_route
+train,00000019,301,953,23709,10107,10862,discontinuous_reference_route
+train,00000033,165,1003,1002,1283,563,discontinuous_reference_route
+train,00000041,13,1264,519,349,348,discontinuous_reference_route
+train,00000042,1213,14661,17989,1762,8726,discontinuous_reference_route
+train,00000069,154,10165,10172,5083,5084,discontinuous_reference_route
+train,00000075,32,507,509,250,227,discontinuous_reference_route
+train,00000075,63,134,552,229,247,discontinuous_reference_route
+train,00000080,119,8899,9194,4222,4363,discontinuous_reference_route
+train,00000086,2,230068,96025,4019,45354,discontinuous_reference_route
+train,00000089,193,22715,22703,10765,10779,discontinuous_reference_route
+student_test,00000076,13,39548,1122,137,509,discontinuous_reference_route

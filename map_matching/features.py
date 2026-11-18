@@ -7,6 +7,10 @@ from math import atan2, degrees, hypot, isfinite
 
 from .preprocess import Trip
 
+FEATURE_CANDIDATE_RADIUS_M = 100.0
+FEATURE_MAX_CANDIDATES = 8
+STATIONARY_THRESHOLD_M = 1.0
+
 
 @dataclass(frozen=True)
 class CandidateFeature:
@@ -30,8 +34,9 @@ class RouteLabel:
     status: str
 
 
-def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
-                 max_candidates: int = 8, stationary_threshold_m: float = 1.0
+def feature_rows(trip: Trip, candidate_radius_m: float = FEATURE_CANDIDATE_RADIUS_M,
+                 max_candidates: int = FEATURE_MAX_CANDIDATES,
+                 stationary_threshold_m: float = STATIONARY_THRESHOLD_M
                  ) -> list[CandidateFeature]:
     """Build candidate rows from GPS/network only; ``trip.route`` is never read.
 
@@ -40,11 +45,30 @@ def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
     """
     if not isfinite(candidate_radius_m) or candidate_radius_m <= 0:
         raise ValueError("candidate_radius_m must be a finite positive number")
-    if max_candidates < 1:
+    if not isinstance(max_candidates, int) or isinstance(max_candidates, bool) or max_candidates < 1:
         raise ValueError("max_candidates must be at least 1")
+    if not isfinite(stationary_threshold_m) or stationary_threshold_m < 0:
+        raise ValueError("stationary_threshold_m must be finite and non-negative")
+    if len(trip.observations) != len(trip.observation_xy):
+        raise ValueError("observation and projected-coordinate counts differ")
+    obs_ids = [obs.obs_id for obs in trip.observations]
+    if any(not isinstance(obs_id, int) or obs_id < 0 for obs_id in obs_ids) or len(set(obs_ids)) != len(obs_ids):
+        raise ValueError("observation IDs must be unique non-negative source IDs")
+
+    node_ids = [node.node_id for node in trip.network.nodes]
+    if node_ids != list(range(len(node_ids))):
+        raise ValueError("node IDs must match their original zero-based row positions")
+    arc_ids = [arc.arc_id for arc in trip.network.arcs]
+    if arc_ids != list(range(len(arc_ids))):
+        raise ValueError("arc IDs must match their original zero-based row positions")
+    if any(arc.from_node_id not in range(len(node_ids)) or arc.to_node_id not in range(len(node_ids))
+           for arc in trip.network.arcs):
+        raise ValueError("arc endpoint references an invalid node ID")
     segments = trip.network.segments
     segment_by_id = {segment.arc_id: segment for segment in segments}
     arc_by_id = {arc.arc_id: arc for arc in trip.network.arcs}
+    if len(segment_by_id) != len(segments) or set(segment_by_id) != set(arc_by_id):
+        raise ValueError("each source arc ID must have exactly one matching geometry segment")
     cell = candidate_radius_m
     grid: dict[tuple[int, int], list[int]] = {}
     for index, segment in enumerate(segments):
@@ -91,13 +115,23 @@ def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
         nearby.sort(key=lambda item: (item[1], item[0]))
         per_observation.append(nearby[:max_candidates])
 
+    def projected_fraction(arc_id: int, point: tuple[float, float]) -> float:
+        segment = segment_by_id[arc_id]
+        dx = segment.end_xy[0] - segment.start_xy[0]
+        dy = segment.end_xy[1] - segment.start_xy[1]
+        length_squared = dx * dx + dy * dy
+        if length_squared == 0:
+            return 0.0
+        fraction = ((point[0] - segment.start_xy[0]) * dx +
+                    (point[1] - segment.start_xy[1]) * dy) / length_squared
+        return max(0.0, min(1.0, fraction))
+
     results: list[CandidateFeature] = []
     for i, (observation, candidates) in enumerate(zip(trip.observations, per_observation)):
         dt, speed, gps_heading = motion[observation.obs_id]
         previous = per_observation[i - 1] if i > 0 else None
-        previous_destinations = {
-            arc_by_id[arc_id].to_node_id for arc_id, _ in previous
-        } if previous is not None else set()
+        previous_destinations = {arc_by_id[arc_id].to_node_id for arc_id, _ in previous} if previous else set()
+        previous_by_arc = {arc_id for arc_id, _ in previous} if previous else set()
         for arc_id, distance in candidates:
             segment = segment_by_id[arc_id]
             dx = segment.end_xy[0] - segment.start_xy[0]
@@ -105,7 +139,14 @@ def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
             road_heading = degrees(atan2(dx, dy)) % 360
             heading_diff = None if gps_heading is None else abs((gps_heading - road_heading + 180) % 360 - 180)
             arc = arc_by_id[arc_id]
-            connected = None if previous is None or not previous else arc.from_node_id in previous_destinations
+            if previous is None or not previous:
+                connected = None
+            else:
+                same_arc_forward = (arc_id in previous_by_arc and
+                                    projected_fraction(arc_id, trip.observation_xy[i]) + 1e-9 >=
+                                    projected_fraction(arc_id, trip.observation_xy[i - 1]))
+                directed_successor = arc.from_node_id in previous_destinations
+                connected = bool(same_arc_forward or directed_successor)
             results.append(CandidateFeature(
                 trip_id=trip.trip_id, obs_id=observation.obs_id, arc_id=arc_id,
                 distance_m=round(distance, 6),

@@ -1,0 +1,3 @@
+split,trips,observations,feature_rows,observations_with_candidates,empty_candidate_observations,candidate_coverage,alignment_proposals,candidate_misses,candidate_miss_rate,ambiguous_proposals,validated_labels,reference_route_breaks
+train,80,208417,1359214,207074,1343,0.9935561878349655,208417,23191,0.11127211311937125,149704,0,13
+student_test,10,19160,130963,19160,0,1.0,19160,71,0.003705636743215031,17139,0,1
