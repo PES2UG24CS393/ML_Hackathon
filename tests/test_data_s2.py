@@ -3,13 +3,19 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from dataclasses import asdict, replace
 
 from map_matching.features import feature_rows
 from map_matching.label_quality import ReviewDecision, label_rows, reference_break_rows
 from map_matching.preprocess import (
     Arc, ArcGeometry, LocalProjection, Node, Observation, RoadNetwork, RouteStep, Trip, load_trip,
 )
-from data_prep.build_dataset import build_dataset
+from data_prep.build_dataset import build_dataset, REVIEW_DECISION_FIELDS
+from data_prep.check_dataset import check
+from data_prep.review_trip import review_trip
+from data_prep.readiness import readiness
+from ml.evaluate import evaluate
+from ml.protocol import dataset, manifest as load_manifest
 
 
 def linear_trip(points, node_lons=(0.0, 0.001), arcs=((0, 1),)):
@@ -89,6 +95,15 @@ class CandidateFeatureConsistencyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "arc IDs"):
             feature_rows(invalid)
 
+    def test_duplicate_ids_and_nonpositive_deltas(self):
+        trip = linear_trip([(0.0002, 0, 5), (0.0003, 0, 5), (0.0004, 0, 4)])
+        rows = feature_rows(trip)
+        self.assertEqual([row.time_gap_s for row in rows], [None] * 3)
+        self.assertEqual([row.speed_mps for row in rows], [None] * 3)
+        self.assertEqual([row.heading_diff_deg for row in rows], [None] * 3)
+        with self.assertRaisesRegex(ValueError, "observation IDs"):
+            feature_rows(replace(trip, observations=(trip.observations[0],) * 3))
+
     def test_features_are_identical_with_reference_access_forbidden(self):
         trip = linear_trip([(0.0002, 0, 1), (0.0005, 0, 2)])
         expected = feature_rows(trip)
@@ -128,6 +143,16 @@ class LabelQualityTests(unittest.TestCase):
         missing_evidence = ReviewDecision(trip.trip_id, 0, "accepted", "RiteshReddyy", "")
         with self.assertRaisesRegex(ValueError, "review_evidence"):
             label_rows(trip, candidates, decisions={0: missing_evidence})
+
+    def test_repeated_arc_and_parallel_road_stay_provisional(self):
+        trip = linear_trip([(0.0005, 0, 1)], arcs=((0, 1), (0, 1), (1, 0)))
+        parallel = replace(trip, route=(RouteStep(0, 0),))
+        repeated = replace(trip, route=(RouteStep(0, 0), RouteStep(1, 2), RouteStep(2, 0)))
+        for case, expected in ((parallel, "ambiguous_parallel_or_junction"),
+                               (repeated, "ambiguous_repeated_arc")):
+            label, = label_rows(case, feature_rows(case))
+            self.assertEqual(label.label_status, expected)
+            self.assertEqual(label.reference_arc_id, 0)
 
     def test_reference_break_report_preserves_directed_endpoint_ids(self):
         trip = linear_trip([(0.0005, 0, 1)], node_lons=(0.0, 0.001, 0.002, 0.003),
@@ -193,6 +218,86 @@ class DatasetBuilderTests(unittest.TestCase):
             checks = self.read_csv(output / "sanity_checks.csv")
             self.assertTrue(checks)
             self.assertTrue(all(row["geometry_distance_consistent"] == "True" for row in checks))
+
+    def test_readiness_requires_negative_support_from_multiple_trips_per_fold(self):
+        summaries = [
+            dict(split="train", trip_id=str(i), fold_id=i // 2, accepted=2, fit_trips=1,
+                 fit_observations=2, positive_rows=2, negative_rows=1, trips_with_negatives=1)
+            for i in range(10)
+        ]
+        folds = {"folds": [{"fold_id": i, "validation_trip_ids": [str(i * 2), str(i * 2 + 1)]}
+                           for i in range(5)]}
+        _, blockers = readiness(summaries, folds)
+        self.assertEqual(blockers, [])
+        summaries[0].update(negative_rows=0, trips_with_negatives=0)
+        _, blockers = readiness(summaries, folds)
+        self.assertIn("unsupported: [0]", blockers[0])
+
+    def test_export_contract_and_student_test_review_isolation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            data = folder / "data"
+            for i in range(5):
+                self.write_trip(data, "train", f"{i:08d}")
+            self.write_trip(data, "student_test", "00000090")
+            # Put the second student fix beyond the candidate radius. A reviewed
+            # missing arc belongs in the evaluation Top-1 denominator.
+            student_track = data / "student_test/00000090/00000090.track"
+            student_track.write_text("8.0 49.0 1\n8.01 49.0 12\n", encoding="utf-8")
+            (data / "evaluator" / "00000100").mkdir(parents=True)
+            counts = {"train": 5, "student_test": 1}
+            output = folder / "plain"
+            spec = build_dataset(data, output, expected_counts=counts)
+            self.assertEqual(spec, build_dataset(data, folder / "repeat", expected_counts=counts))
+            trip_id = "00000000"
+            inference = feature_rows(load_trip(data / "train" / trip_id, include_reference=False))
+            expected = [{key: "" if value is None else str(value) for key, value in asdict(row).items()}
+                        for row in inference]
+            actual = self.read_csv(output / "features_train.csv")
+            self.assertEqual([row for row in actual if row["trip_id"] == trip_id], expected)
+
+            def create_decision(split, identifier, observation):
+                sheet, stub = review_trip(data, split, identifier, observation, folder / "review")
+                self.assertIn("Nearby reference steps", sheet.read_text())
+                record, = self.read_csv(stub)
+                record.update(decision="accepted", reviewer="fixture-reviewer",
+                              review_evidence="fixture-only.md#sequence")
+                with stub.open("w", newline="", encoding="utf-8") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=REVIEW_DECISION_FIELDS)
+                    writer.writeheader()
+                    writer.writerow(record)
+                return stub
+
+            train_decision = create_decision("train", trip_id, 0)
+            student_decision = create_decision("student_test", "00000090", 1)
+            reviewed = folder / "reviewed"
+            train_only = build_dataset(data, reviewed, expected_counts=counts, review_decisions_path=train_decision)
+            renewed = build_dataset(data, reviewed, expected_counts=counts,
+                                    review_decisions_path=train_decision,
+                                    student_test_review_decisions_path=student_decision)
+            self.assertFalse(renewed["training_ready"])
+            self.assertEqual(train_only["readiness_blockers"], renewed["readiness_blockers"])
+            for name in ("features_train.csv", "labels_train.csv", "folds.json", "features_student_test.csv"):
+                self.assertEqual(train_only["outputs_sha256"][name], renewed["outputs_sha256"][name])
+            self.assertEqual(check(reviewed / "manifest.json")["partitions"]["student_test"]["validated_labels"], 1)
+            loaded, trips = load_manifest(reviewed / "manifest.json", require_training_ready=False)
+            train = dataset(reviewed, loaded, "train", trips["train"])
+            student = dataset(reviewed, loaded, "student_test", trips["student_test"])
+            self.assertEqual(train.validated, {(trip_id, 0): 0})
+            self.assertEqual(student.validated, {("00000090", 1): 0})
+            metrics = evaluate([], student.observations, student.validated)
+            self.assertEqual(metrics["top1"], 0)
+            self.assertIsNone(metrics["macro_f1"])
+            self.assertIsNone(metrics["log_loss"])
+            with self.assertRaisesRegex(ValueError, "target other trips"):
+                build_dataset(data, reviewed, expected_counts=counts, review_decisions_path=student_decision)
+            student_track.write_text("8.0 49.0 2\n8.01 49.0 12\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "stale trip inputs"):
+                build_dataset(data, reviewed, expected_counts=counts,
+                              student_test_review_decisions_path=student_decision)
+            with self.assertRaisesRegex(ValueError, "differ from the export fingerprint"):
+                check(reviewed / "manifest.json")
+            self.assertEqual(json.loads((reviewed / "manifest.json").read_text()), renewed)
 
 
 if __name__ == "__main__":

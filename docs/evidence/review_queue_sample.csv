@@ -1,0 +1,15 @@
+split,fold_id,trip_id,obs_id,priority,review_reasons,alignment_status,proposed_reference_arc_id,independent_review
+train,0,00000005,0,1_quick,quick_pick;trip_anchor,needs_review,176,pending
+train,1,00000013,176,1_quick,quick_pick,needs_review,3725,pending
+train,2,00000001,0,1_quick,quick_pick;trip_anchor,needs_review,64973,pending
+train,3,00000006,950,1_quick,quick_pick,needs_review,929,pending
+train,4,00000003,57,1_quick,quick_pick,needs_review,5526,pending
+train,0,00000099,2038,2_diagnostic,no_candidates;reference_miss,outside_label_radius,2223,pending
+train,0,00000018,30,2_diagnostic,reference_miss,reference_arc_missing_from_candidates,2459,pending
+train,0,00000005,89,2_diagnostic,ambiguous_parallel_or_junction,ambiguous_parallel_or_junction,193,pending
+train,0,00000018,178,2_diagnostic,ambiguous_repeated_arc;repeated_route_arc,ambiguous_repeated_arc,3221,pending
+train,0,00000019,307,2_diagnostic,ambiguous_parallel_or_junction;near_reference_break,ambiguous_parallel_or_junction,85589,pending
+train,0,00000024,139,2_diagnostic,ambiguous_parallel_or_junction;timestamp_gap,ambiguous_parallel_or_junction,32786,pending
+train,0,00000019,0,2_diagnostic,ambiguous_parallel_or_junction;discontinuous_trip_anchor;trip_anchor,ambiguous_parallel_or_junction,77667,pending
+train,0,00000005,261,3_anchor,trip_anchor,needs_review,197,pending
+student_test,,00000040,2246,3_anchor,trip_anchor,needs_review,7715,pending

@@ -7,8 +7,11 @@ import csv
 import hashlib
 import json
 import random
+import re
+from collections import Counter, defaultdict
 from dataclasses import asdict, fields
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Iterable
 
 from map_matching.features import (
@@ -27,15 +30,27 @@ from map_matching.label_quality import (
 )
 from map_matching.preprocess import load_trip
 
+from .readiness import readiness, sha256_file
+
 SPLITS = ("train", "student_test")
 FEATURE_SCHEMA = tuple(field.name for field in fields(CandidateFeature))
 LABEL_SCHEMA = tuple(field.name for field in fields(LabelQuality))
-REVIEW_DECISION_FIELDS = ("trip_id", "obs_id", "decision", "reviewer", "review_evidence")
+REVIEW_DECISION_FIELDS = (
+    "trip_id", "obs_id", "decision", "reviewer", "review_evidence",
+    "reference_arc_id", "route_step_id", "trip_input_sha256",
+)
+REVIEW_SUMMARY_FIELDS = (
+    "split", "trip_id", "fold_id", "observations", "reviewed", "accepted", "rejected",
+    "ambiguous", "unreviewed", "candidate_missing", "reference_candidate_missing",
+    "fit_observations", "fit_trips", "positive_rows", "negative_rows", "trips_with_negatives",
+    "validated_reference_misses",
+)
 REVIEW_QUEUE_FIELDS = (
     "split", "trip_id", "obs_id", "timestamp_s", "longitude", "latitude",
     "candidate_arc_ids", "proposed_route_step_id", "proposed_reference_arc_id",
     "aligned_distance_m", "alignment_status", "candidate_arc_present",
     "reference_route_discontinuous", "independent_review", "reviewer", "review_evidence",
+    "fold_id", "priority", "review_reasons", "previous_gap_s", "trip_input_sha256",
 )
 BREAK_FIELDS = (
     "split", "trip_id", "break_before_route_step_id", "previous_arc_id", "current_arc_id",
@@ -67,47 +82,60 @@ def _write_header(path: Path, columns: Iterable[str]) -> tuple[object, csv.DictW
     return stream, writer
 
 
-def load_review_decisions(path: Path | None) -> dict[tuple[str, int], ReviewDecision]:
-    if path is None or not path.exists():
-        return {}
-    decisions: dict[tuple[str, int], ReviewDecision] = {}
-    with path.open(newline="", encoding="utf-8-sig") as stream:
+def load_review_decisions(path: Path | None) -> dict[str, dict[int, tuple[ReviewDecision, str]]]:
+    decisions = defaultdict(dict)
+    if path is None:
+        return decisions
+    with Path(path).open(newline="", encoding="utf-8-sig") as stream:
         reader = csv.DictReader(stream)
-        if reader.fieldnames is None or not set(REVIEW_DECISION_FIELDS).issubset(reader.fieldnames):
-            raise ValueError(f"review decisions must have columns {', '.join(REVIEW_DECISION_FIELDS)}")
+        if not set(REVIEW_DECISION_FIELDS).issubset(reader.fieldnames or ()):
+            raise ValueError(f"{path}: expected columns {', '.join(REVIEW_DECISION_FIELDS)}")
         for line_no, row in enumerate(reader, 2):
             try:
-                obs_id = int(row["obs_id"])
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"{path}:{line_no}: obs_id must be an integer") from exc
-            decision = ReviewDecision(
-                trip_id=row["trip_id"].strip(), obs_id=obs_id,
-                decision=row["decision"].strip().lower(), reviewer=row["reviewer"].strip(),
-                review_evidence=row["review_evidence"].strip(),
-            )
-            key = (decision.trip_id, decision.obs_id)
-            if key in decisions:
-                raise ValueError(f"{path}:{line_no}: duplicate review decision for {key}")
-            if decision.decision not in {"accepted", "rejected"}:
-                raise ValueError(f"{path}:{line_no}: decision must be accepted or rejected")
-            decisions[key] = decision
+                identifier, observation, verdict, reviewer, evidence, arc, step, fingerprint = (
+                    row[name].strip() for name in REVIEW_DECISION_FIELDS
+                )
+                if not re.fullmatch(r"[0-9]{8}", identifier):
+                    raise ValueError("invalid trip ID")
+                if not re.fullmatch(r"[0-9]+", observation):
+                    raise ValueError("invalid observation ID")
+                if verdict not in {"accepted", "rejected"}:
+                    raise ValueError("decision must be accepted or rejected")
+                if bool(arc) != bool(step) or ((arc or verdict == "accepted")
+                        and not all(re.fullmatch(r"[0-9]+", value) for value in (arc, step))):
+                    raise ValueError("expected the proposed arc and route step IDs")
+                if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+                    raise ValueError("expected the trip input SHA-256")
+                obs_id = int(observation)
+                if obs_id in decisions[identifier]:
+                    raise ValueError(f"duplicate review decision for {identifier}/{obs_id}")
+                decisions[identifier][obs_id] = (
+                    ReviewDecision(identifier, obs_id, verdict, reviewer, evidence,
+                                   int(arc) if arc else None, int(step) if step else None),
+                    fingerprint,
+                )
+            except (AttributeError, ValueError) as exc:
+                raise ValueError(f"{path}:{line_no}: {exc}") from exc
     return decisions
 
 
-def _sha256_inputs(data_root: Path) -> str:
-    digest = hashlib.sha256()
-    for split in SPLITS:
-        for trip_dir in sorted((data_root / split).iterdir()):
-            if not trip_dir.is_dir():
-                continue
-            for path in sorted(trip_dir.iterdir()):
-                if not path.is_file() or path.suffix not in {".track", ".nodes", ".arcs", ".route"}:
-                    continue
-                digest.update(f"{split}/{trip_dir.name}/{path.name}\0".encode())
-                with path.open("rb") as stream:
-                    for block in iter(lambda: stream.read(1024 * 1024), b""):
-                        digest.update(block)
-    return digest.hexdigest()
+def hash_trip_inputs(trip_dir: Path) -> str:
+    if trip_dir.parent.is_symlink() or trip_dir.is_symlink():
+        raise ValueError(f"symbolic links are unsupported in trip {trip_dir.name}")
+    trip_digest = hashlib.sha256()
+    for suffix in (".arcs", ".nodes", ".route", ".track"):
+        path = trip_dir / f"{trip_dir.name}{suffix}"
+        if path.is_symlink():
+            raise ValueError(f"symbolic links are unsupported in trip {trip_dir.name}")
+        if not path.exists() and suffix == ".route":
+            continue
+        fingerprint = sha256_file(path)
+        trip_digest.update(f"{path.name}\0{fingerprint}\n".encode())
+    return trip_digest.hexdigest()
+
+
+def update_input_digest(digest, split, trip_id, fingerprint):
+    digest.update(f"{split}/{trip_id}\0{fingerprint}\n".encode())
 
 
 def _folds(train_trip_ids: list[str], seed: int, fold_count: int = 5) -> dict:
@@ -125,44 +153,83 @@ def _folds(train_trip_ids: list[str], seed: int, fold_count: int = 5) -> dict:
     return {"fold_version": "trip-grouped-v1", "seed": seed, "folds": folds}
 
 
-def _trip_review_rows(split: str, trip, feature_rows_for_trip: list[CandidateFeature],
-                      labels: list[LabelQuality]) -> list[dict]:
-    candidates_by_obs: dict[int, list[CandidateFeature]] = {}
-    for row in feature_rows_for_trip:
-        candidates_by_obs.setdefault(row.obs_id, []).append(row)
-    label_by_obs = {row.obs_id: row for row in labels}
+def _trip_review_rows(split, trip, rows, labels, breaks, fold_id, fingerprint):
+    candidates = defaultdict(list)
+    for row in rows:
+        candidates[row.obs_id].append(row.arc_id)
+    repeated = Counter(step.arc_id for step in trip.route or ())
+    near_break = {step for row in breaks for step in (
+        row["break_before_route_step_id"] - 1, row["break_before_route_step_id"]
+    )}
     n = len(trip.observations)
-    anchors = sorted({0, n // 4, n // 2, 3 * n // 4, n - 1}) if n else []
-    selected = set(anchors)
-    # Include every sparse miss and ambiguous alignment, plus fixes adjacent to
-    # directed reference breaks, so reviewers can inspect the failure modes.
-    obs_index = {obs.obs_id: index for index, obs in enumerate(trip.observations)}
-    for label in labels:
-        if label.candidate_arc_present is False or "ambiguous" in label.alignment_status:
-            selected.add(obs_index[label.obs_id])
-    for break_row in reference_break_rows(trip, split):
-        route_step = break_row["break_before_route_step_id"]
-        for label in labels:
-            if label.route_step_id in {route_step - 1, route_step}:
-                selected.add(obs_index[label.obs_id])
-    output = []
-    for index in sorted(selected):
-        obs = trip.observations[index]
-        label = label_by_obs[obs.obs_id]
-        candidates = candidates_by_obs.get(obs.obs_id, [])
-        output.append({
+    anchors = {0, n // 4, n // 2, 3 * n // 4, n - 1}
+    quick_pick_used = False
+    for index, (obs, label) in enumerate(zip(trip.observations, labels)):
+        arc_ids = candidates[obs.obs_id]
+        gap = obs.timestamp_s - trip.observations[index - 1].timestamp_s if index else None
+        reasons = []
+        if not arc_ids:
+            reasons.append("no_candidates")
+        if label.candidate_arc_present is False:
+            reasons.append("reference_miss")
+        if "ambiguous" in label.alignment_status:
+            reasons.append(label.alignment_status)
+        if label.route_step_id in near_break:
+            reasons.append("near_reference_break")
+        if repeated[label.reference_arc_id] > 1:
+            reasons.append("repeated_route_arc")
+        if gap is not None and (gap <= 0 or gap >= 5):
+            reasons.append("timestamp_gap")
+        if label.reference_route_discontinuous and index in anchors:
+            reasons.append("discontinuous_trip_anchor")
+        quick_pick = (not reasons and not quick_pick_used and label.alignment_status == "needs_review"
+                      and len(arc_ids) >= 2 and arc_ids[0] == label.reference_arc_id)
+        quick_pick_used |= quick_pick
+        if quick_pick:
+            reasons.append("quick_pick")
+        if index in anchors:
+            reasons.append("trip_anchor")
+        if label.reviewer:
+            reasons.append("review_recorded")
+        if not reasons:
+            continue
+        priority = ("1_quick" if quick_pick else "2_diagnostic"
+                    if set(reasons) - {"trip_anchor", "review_recorded"} else "3_anchor")
+        yield {
             "split": split, "trip_id": trip.trip_id, "obs_id": obs.obs_id,
             "timestamp_s": obs.timestamp_s, "longitude": obs.lon, "latitude": obs.lat,
-            "candidate_arc_ids": ";".join(str(row.arc_id) for row in candidates),
+            "candidate_arc_ids": ";".join(map(str, arc_ids)),
             "proposed_route_step_id": label.route_step_id,
             "proposed_reference_arc_id": label.reference_arc_id,
             "aligned_distance_m": label.aligned_distance_m,
             "alignment_status": label.alignment_status,
             "candidate_arc_present": label.candidate_arc_present,
             "reference_route_discontinuous": label.reference_route_discontinuous,
-            "independent_review": "pending", "reviewer": "", "review_evidence": "",
-        })
-    return output
+            "independent_review": {"validated": "accepted", "rejected": "rejected"}.get(
+                label.label_status, "pending"),
+            "reviewer": label.reviewer, "review_evidence": label.review_evidence,
+            "fold_id": fold_id, "priority": priority, "review_reasons": ";".join(reasons),
+            "previous_gap_s": gap, "trip_input_sha256": fingerprint,
+        }
+
+
+def _review_summary(split, trip_id, fold_id, rows, labels):
+    counts = Counter(row.obs_id for row in rows)
+    accepted = [label for label in labels if label.label_status == "validated"]
+    fit_sizes = [counts[label.obs_id] for label in accepted if label.candidate_arc_present]
+    rejected = sum(label.label_status == "rejected" for label in labels)
+    return dict(
+        split=split, trip_id=trip_id, fold_id=fold_id, observations=len(labels),
+        reviewed=len(accepted) + rejected, accepted=len(accepted), rejected=rejected,
+        ambiguous=sum("ambiguous" in label.alignment_status for label in labels),
+        unreviewed=len(labels) - len(accepted) - rejected,
+        candidate_missing=len(labels) - len(counts),
+        reference_candidate_missing=sum(label.candidate_arc_present is False for label in labels),
+        fit_observations=len(fit_sizes), fit_trips=bool(fit_sizes),
+        positive_rows=len(fit_sizes), negative_rows=sum(size - 1 for size in fit_sizes),
+        trips_with_negatives=any(size > 1 for size in fit_sizes),
+        validated_reference_misses=len(accepted) - len(fit_sizes),
+    )
 
 
 def _trip_metrics(split: str, trip, rows: list[CandidateFeature], labels: list[LabelQuality],
@@ -215,6 +282,7 @@ def _split_metrics(rows: list[dict]) -> dict:
 
 def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artifacts/data"),
                   *, seed: int = 2026, review_decisions_path: Path | None = None,
+                  student_test_review_decisions_path: Path | None = None,
                   expected_counts: dict[str, int] | None = None) -> dict:
     """Generate separate feature/label tables, folds, manifest and QA evidence."""
     data_root, output_dir = Path(data_root), Path(output_dir)
@@ -225,6 +293,8 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
     trip_dirs: dict[str, list[Path]] = {}
     for split in SPLITS:
         partition = data_root / split
+        if partition.is_symlink():
+            raise ValueError(f"symbolic links are unsupported in the {split} partition")
         if not partition.is_dir():
             raise FileNotFoundError(f"required development split not found: {partition}")
         trip_dirs[split] = sorted(path for path in partition.iterdir() if path.is_dir())
@@ -232,13 +302,35 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
         if expected is not None and len(trip_dirs[split]) != expected:
             raise ValueError(f"{split} has {len(trip_dirs[split])} trips; expected {expected}")
 
-    decisions = load_review_decisions(review_decisions_path)
-    train_ids = {path.name for path in trip_dirs["train"]}
-    unknown = {trip_id for trip_id, _ in decisions} - train_ids
-    if unknown:
-        raise ValueError(f"review decisions must target training trips only: {sorted(unknown)[:5]}")
-
+    paths = {"train": review_decisions_path, "student_test": student_test_review_decisions_path}
+    decisions = {split: load_review_decisions(paths[split]) for split in SPLITS}
+    trip_ids = {split: {path.name for path in trip_dirs[split]} for split in SPLITS}
+    if trip_ids["train"] & trip_ids["student_test"]:
+        raise ValueError("train and student_test trip IDs overlap")
+    for split, identifiers in trip_ids.items():
+        if any(not re.fullmatch(r"[0-9]{8}", identifier) for identifier in identifiers):
+            raise ValueError(f"invalid trip ID in {split}")
+        unknown = decisions[split].keys() - identifiers
+        if unknown:
+            raise ValueError(f"{split} review decisions target other trips: {sorted(unknown)[:5]}")
+    folds = _folds(sorted(trip_ids["train"]), seed)
+    fold_by_trip_id = {
+        trip_id: fold["fold_id"]
+        for fold in folds["folds"] for trip_id in fold["validation_trip_ids"]
+    }
     output_dir.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".build-", dir=output_dir) as staging:
+        stage = Path(staging)
+        manifest = _export(data_root, stage, trip_dirs, decisions, paths, folds, fold_by_trip_id, seed)
+        for name in (*manifest["outputs"], "manifest.json"):
+            (stage / name).replace(output_dir / name)
+    return manifest
+
+
+def _export(data_root, output_dir, trip_dirs, decisions, paths, folds, fold_by_trip_id, seed):
+    input_digest = hashlib.sha256()
+    review_summary = []
+
     streams, writers = {}, {}
     try:
         for split in SPLITS:
@@ -255,13 +347,22 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
         sanity_records: list[dict] = []
         for split in SPLITS:
             for trip_dir in trip_dirs[split]:
+                fingerprint = hash_trip_inputs(trip_dir)
                 trip = load_trip(trip_dir)
                 feature_rows_for_trip = feature_rows(
                     trip, FEATURE_CANDIDATE_RADIUS_M, FEATURE_MAX_CANDIDATES,
                 )
-                trip_decisions = ({obs_id: decision for (trip_id, obs_id), decision in decisions.items()
-                                   if trip_id == trip.trip_id} if split == "train" else {})
-                label_records = label_rows(trip, feature_rows_for_trip, decisions=trip_decisions)
+                update_input_digest(input_digest, split, trip.trip_id, fingerprint)
+                trip_decisions = {}
+                for obs_id, (decision, reviewed_hash) in decisions[split].get(trip.trip_id, {}).items():
+                    if reviewed_hash != fingerprint:
+                        raise ValueError(f"review targets stale trip inputs: {trip.trip_id}/{obs_id}")
+                    trip_decisions[obs_id] = decision
+                label_records = label_rows(trip, feature_rows_for_trip, decisions=trip_decisions,
+                                           evaluation_only=split == "student_test")
+                fold_id = fold_by_trip_id.get(trip.trip_id)
+                review_summary.append(_review_summary(split, trip.trip_id, fold_id,
+                                                      feature_rows_for_trip, label_records))
                 for row in feature_rows_for_trip:
                     _write_row(writers[("features", split)], asdict(row))
                 for row in label_records:
@@ -269,12 +370,13 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
 
                 breaks = reference_break_rows(trip, split)
                 break_records.extend(breaks)
-                checks = sanity_checks(trip, label_records,
-                    tuple(sorted({0, len(trip.observations) // 4, len(trip.observations) // 2,
-                                  3 * len(trip.observations) // 4, len(trip.observations) - 1}))
-                    if trip.observations else ())
+                n = len(trip.observations)
+                offsets = {0, n // 4, n // 2, 3 * n // 4, n - 1} if n else set()
+                offsets.update(i for i, label in enumerate(label_records) if label.label_status == "validated")
+                checks = sanity_checks(trip, label_records, tuple(sorted(offsets)))
                 sanity_records.extend(checks)
-                review_records.extend(_trip_review_rows(split, trip, feature_rows_for_trip, label_records))
+                review_records.extend(_trip_review_rows(split, trip, feature_rows_for_trip, label_records,
+                                                       breaks, fold_id, fingerprint))
                 trip_metrics.append(_trip_metrics(split, trip, feature_rows_for_trip,
                                                   label_records, checks, breaks))
     finally:
@@ -288,21 +390,20 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
                  ("split", *tuple(next(iter(split_metrics.values())).keys())),
                  [{"split": split, **metrics} for split, metrics in split_metrics.items()])
     _write_table(output_dir / "reference_breaks.csv", BREAK_FIELDS, break_records)
+    review_records.sort(key=lambda row: (SPLITS.index(row["split"]), row["priority"],
+                                         row["fold_id"] if row["fold_id"] is not None else -1,
+                                         row["trip_id"], row["obs_id"]))
     _write_table(output_dir / "review_queue.csv", REVIEW_QUEUE_FIELDS, review_records)
+    _write_table(output_dir / "review_summary.csv", REVIEW_SUMMARY_FIELDS, review_summary)
     _write_table(output_dir / "sanity_checks.csv",
                  ("trip_id", "obs_id", "route_step_id", "reference_arc_id", "aligned_distance_m",
                   "label_status", "geometry_distance_consistent", "route_step_order_monotonic",
                   "independent_review", "review_evidence"), sanity_records)
-    if review_decisions_path is None or not Path(review_decisions_path).exists():
-        _write_table(output_dir / "review_decisions_template.csv", REVIEW_DECISION_FIELDS, [])
-
-    folds = _folds([path.name for path in trip_dirs["train"]], seed)
+    templates = ["review_decisions_template.csv", "student_test_review_decisions_template.csv"]
+    for template in templates:
+        _write_table(output_dir / template, REVIEW_DECISION_FIELDS, [])
     (output_dir / "folds.json").write_text(json.dumps(folds, indent=2) + "\n", encoding="utf-8")
     c0_contract = Path(__file__).resolve().parents[1] / "docs" / "contracts" / "sprint2_v1.md"
-    fold_by_trip_id = {
-        trip_id: fold["fold_id"]
-        for fold in folds["folds"] for trip_id in fold["validation_trip_ids"]
-    }
     assignments = [
         {"split": split, "trip_id": path.name,
          "training_fold_id": fold_by_trip_id.get(path.name) if split == "train" else None}
@@ -310,12 +411,10 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
     ]
     _write_table(output_dir / "trip_assignments.csv",
                  ("split", "trip_id", "training_fold_id"), assignments)
-    total_validated = split_metrics["train"]["validated_labels"]
-    blockers = []
+    gate, blockers = readiness(review_summary, folds)
+    _write_table(output_dir / "review_summary_by_fold.csv", REVIEW_SUMMARY_FIELDS, gate["fold_support"])
     if not c0_contract.is_file():
         blockers.append("C0 contract-v1 has not been merged; final schema freeze is pending")
-    if not total_validated:
-        blockers.append("No independently reviewed training labels have status validated")
     if any(row["geometry_sanity_failures"] or row["route_step_order_monotonic"] is False
            for row in trip_metrics if row["split"] == "train"):
         blockers.append("One or more geometry or route-order sanity checks failed")
@@ -326,7 +425,12 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
         "contract_frozen": c0_contract.is_file(),
         "source_root": str(data_root),
         "evaluator_data_accessed": False,
-        "data_fingerprint_sha256": _sha256_inputs(data_root),
+        "data_fingerprint_sha256": input_digest.hexdigest(),
+        "data_fingerprint_version": "trip-file-sha256-v2",
+        "review_protocol_version": "proposal-bound-v2",
+        "review_decisions_sha256": {split: sha256_file(path) if path is not None else None
+                                    for split, path in paths.items()},
+        "readiness": gate,
         "schema_sha256": hashlib.sha256(json.dumps({
             "feature_schema": FEATURE_SCHEMA, "label_schema": LABEL_SCHEMA,
         }, separators=(",", ":")).encode()).hexdigest(),
@@ -343,10 +447,12 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
         "outputs": ["features_train.csv", "labels_train.csv", "features_student_test.csv",
                     "labels_student_test.csv", "coverage_by_trip.csv", "coverage_by_split.csv",
                     "reference_breaks.csv", "review_queue.csv", "sanity_checks.csv", "folds.json",
-                    "trip_assignments.csv", "review_decisions_template.csv"],
+                    "trip_assignments.csv", "review_summary.csv", "review_summary_by_fold.csv", *templates],
         "training_ready": not blockers,
         "readiness_blockers": blockers,
     }
+    manifest["outputs_sha256"] = {name: sha256_file(output_dir / name)
+                                  for name in manifest["outputs"]}
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
@@ -354,7 +460,8 @@ def build_dataset(data_root: Path = Path("data"), output_dir: Path = Path("artif
 def _write_table(path: Path, columns: Iterable[str], rows: Iterable[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(columns), extrasaction="ignore")
+        writer = csv.DictWriter(stream, fieldnames=list(columns), extrasaction="ignore",
+                                lineterminator="\n")
         writer.writeheader()
         for row in rows:
             _write_row(writer, row)
@@ -366,9 +473,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("artifacts/data"))
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--review-decisions", type=Path)
+    parser.add_argument("--student-test-review-decisions", type=Path)
     args = parser.parse_args()
     manifest = build_dataset(args.data, args.out, seed=args.seed,
-                             review_decisions_path=args.review_decisions)
+                             review_decisions_path=args.review_decisions,
+                             student_test_review_decisions_path=args.student_test_review_decisions)
     print(json.dumps(manifest, indent=2))
 
 

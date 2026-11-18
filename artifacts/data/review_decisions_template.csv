@@ -1,1 +1,1 @@
-trip_id,obs_id,decision,reviewer,review_evidence
+trip_id,obs_id,decision,reviewer,review_evidence,reference_arc_id,route_step_id,trip_input_sha256

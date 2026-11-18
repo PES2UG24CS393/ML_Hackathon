@@ -1,0 +1,6 @@
+split,trip_id,fold_id,observations,reviewed,accepted,rejected,ambiguous,unreviewed,candidate_missing,reference_candidate_missing,fit_observations,fit_trips,positive_rows,negative_rows,trips_with_negatives,validated_reference_misses
+train,,0,24080,0,0,0,17684,24080,2,89,0,0,0,0,0,0
+train,,1,57210,0,0,0,46804,57210,1,362,0,0,0,0,0,0
+train,,2,58464,0,0,0,35461,58464,1059,17608,0,0,0,0,0,0
+train,,3,26055,0,0,0,16816,26055,10,161,0,0,0,0,0,0
+train,,4,42608,0,0,0,32939,42608,271,4971,0,0,0,0,0,0

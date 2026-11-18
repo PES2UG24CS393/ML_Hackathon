@@ -1,4 +1,5 @@
 import json
+import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -62,3 +63,10 @@ def test_missing_assets():
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "assets_unavailable"
     assert "/private" not in response.text
+
+
+def load_tests(loader, tests, pattern):
+    for case in (test_fixture_round_trip_and_routing_errors,
+                 test_prediction_precedes_optional_server_evaluation, test_missing_assets):
+        tests.addTest(unittest.FunctionTestCase(case))
+    return tests
