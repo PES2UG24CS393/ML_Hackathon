@@ -142,19 +142,19 @@ class ExperimentTests(unittest.TestCase):
             bundle = root / "v1"
             export_bundle(bundle, fitted, {"synthetic": True})
             original = score_candidate_rows(*fitted[:2], train.candidates)
-            restored = score_candidate_rows(load_bundle(bundle), None, train.candidates)
+            restored = score_candidate_rows(*load_bundle(bundle), train.candidates)
             self.assertEqual(original, restored)
             metadata = json.loads((bundle / "manifest.json").read_text())
-            self.assertEqual(metadata["feature_columns"], list(FEATURE_ORDER))
+            self.assertEqual(metadata["feature_order"], list(FEATURE_ORDER))
             self.assertEqual(metadata["candidate_policy"], {"radius_m": 100, "max_candidates": 8})
             child = subprocess.run(
                 [sys.executable, "-B", "-c",
                  "import sys; sys.path.insert(0, sys.argv[1]); "
                  "import numpy as np; "
                  "from joblib import load; "
-                 "m = load(sys.argv[2]); "
-                 "print(m.predict_proba(np.array([[2.0, 0, 0, 0, 0]]))[0, 1])",
-                 str(Path(__file__).parent), str(bundle / "model.joblib")],
+                 "m, _ = load(sys.argv[2]); "
+                 "print(m.predict_proba(np.array([[2.0, 0, 0, 0, 0]]))[0, list(m.classes_).index(1)])",
+                 str(Path(__file__).parent), str(bundle / "pipeline.joblib")],
                 check=True, capture_output=True, text=True,
             )
             self.assertEqual(float(child.stdout.strip()), 0.8)

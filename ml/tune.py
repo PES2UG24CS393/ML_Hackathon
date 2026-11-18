@@ -1,6 +1,7 @@
 """Compare five compatible real runs, tune on training trips and export the winner."""
 
 import argparse
+from copy import deepcopy
 import csv
 import hashlib
 from importlib.metadata import PackageNotFoundError, version
@@ -12,9 +13,9 @@ from tempfile import TemporaryDirectory
 from time import perf_counter
 
 import joblib
+import numpy as np
 
 from .protocol import FEATURE_ORDER, FEATURE_VERSION, dataset, model_factory, read_config
-from .serving import CandidateProbabilityModel
 from .trainer import _score, fit_model, load_inputs, run_cv, score_candidate_rows, write_result
 
 FAMILIES = {"logistic", "random_forest", "knn", "decision_tree", "xgboost"}
@@ -184,6 +185,17 @@ def compare(runs, output):
     plt.close(figure)
 
 
+def _serving_model(model):
+    estimator = model.steps[-1][1] if hasattr(model, "steps") else model
+    if not hasattr(estimator, "get_booster") or not str(estimator.device).startswith("cuda"):
+        return model
+    # Keep CUDA for training while packaging a predictor that can serve on a CPU.
+    serving = deepcopy(model)
+    estimator = serving.steps[-1][1] if hasattr(serving, "steps") else serving
+    estimator.set_params(device="cpu")
+    return serving
+
+
 def export_bundle(path, fitted, metadata):
     """Publish a complete bundle in one rename at a new versioned destination."""
     if path.exists():
@@ -195,11 +207,11 @@ def export_bundle(path, fitted, metadata):
         source = Path(temp) / "bundle"
         source.mkdir()
         model, calibrator, _ = fitted
-        model_path = source / "model.joblib"
-        joblib.dump(CandidateProbabilityModel(model, calibrator), model_path, compress=3)
+        model_path = source / "pipeline.joblib"
+        joblib.dump((_serving_model(model), calibrator), model_path, compress=3)
         _json(source / "manifest.json", {
             **metadata, "bundle_version": 1, "feature_version": FEATURE_VERSION,
-            "feature_columns": list(FEATURE_ORDER), "candidate_policy": CANDIDATE_POLICY,
+            "feature_order": list(FEATURE_ORDER), "candidate_policy": CANDIDATE_POLICY,
             "pipeline_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
         })
         source.rename(path)
@@ -210,10 +222,10 @@ def load_bundle(path):
     path = Path(path)
     spec = read_config(path / "manifest.json")
     if (spec["bundle_version"] != 1 or spec["feature_version"] != FEATURE_VERSION
-            or tuple(spec["feature_columns"]) != FEATURE_ORDER
+            or tuple(spec["feature_order"]) != FEATURE_ORDER
             or spec["candidate_policy"] != CANDIDATE_POLICY):
         raise ValueError("Unsupported bundle or feature schema")
-    model_path = path / "model.joblib"
+    model_path = path / "pipeline.joblib"
     if hashlib.sha256(model_path.read_bytes()).hexdigest() != spec["pipeline_sha256"]:
         raise ValueError("Pipeline checksum mismatch")
     return joblib.load(model_path)
@@ -268,11 +280,12 @@ def main(argv=None):
               "cv": cv, "student_test": student_metrics}
     write_result(args.output, result, cv_scores=scores, student_test_scores=student_scores)
     export_bundle(args.bundle, fitted, metadata)
-    model = load_bundle(args.bundle)
+    model, calibrator = load_bundle(args.bundle)
     sample = student.candidates[:32]
     expected = score_candidate_rows(*fitted[:2], sample)
-    restored = score_candidate_rows(model, None, sample)
-    if [row["p_positive"] for row in restored] != [row["p_positive"] for row in expected]:
+    restored = score_candidate_rows(model, calibrator, sample)
+    if not np.allclose([row["p_positive"] for row in restored],
+                       [row["p_positive"] for row in expected], rtol=1e-6, atol=1e-7):
         raise RuntimeError("Exported pipeline failed probability parity")
     print(args.bundle / "manifest.json")
 
