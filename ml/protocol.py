@@ -13,6 +13,8 @@ FEATURE_ORDER = (
     "distance_m", "heading_diff_deg", "speed_mps", "time_gap_s", "predecessor_connected"
 )
 PARTITIONS = ("train", "student_test")
+DATA_MANIFEST_VERSION = "sprint2-data-manifest-v1"
+CANDIDATE_POLICY = {"radius_m": 100, "max_candidates": 8}
 
 
 def trip_id(value):
@@ -88,12 +90,68 @@ def _csv(path):
         yield from csv.DictReader(handle)
 
 
-def manifest(path, *, synthetic=False):
+def _data_export(path, spec):
+    if spec["contract_version"] != FEATURE_VERSION or spec["contract_frozen"] is not True:
+        raise ValueError("The data export must use the frozen Sprint 2 v1 contract")
+    if spec["evaluator_data_accessed"] is not False:
+        raise ValueError("The training export must exclude evaluator data")
+    if spec["candidate_settings"] != {**CANDIDATE_POLICY, "arc_id_tie_break": "ascending"}:
+        raise ValueError("Unexpected candidate policy in the data export")
+    fold_spec = read_config(path.parent / spec["folds_file"])
+    if fold_spec["fold_version"] != "trip-grouped-v1" or fold_spec["seed"] != spec["seed"]:
+        raise ValueError("The fold file does not match the manifest")
+    fold_by_trip = {}
+    for fold in fold_spec["folds"]:
+        for identifier in fold["validation_trip_ids"]:
+            if identifier in fold_by_trip:
+                raise ValueError(f"Trip appears more than once in the fold file: {identifier}")
+            fold_by_trip[identifier] = fold["fold_id"]
+    source = Path(spec["source_root"]).resolve()
+    trips = []
+    for row in _csv(path.parent / spec["trip_assignments_file"]):
+        partition = row["split"]
+        identifier = trip_id(row["trip_id"])
+        if partition not in PARTITIONS:
+            raise ValueError(f"Unexpected training or student-test partition: {partition}")
+        fold = row["training_fold_id"]
+        trips.append({
+            "partition": partition,
+            "trip_id": identifier,
+            "fold_id": source_id(fold) if fold else None,
+            "trip_dir": str(source / partition / identifier),
+        })
+    assigned_folds = {
+        item["trip_id"]: item["fold_id"] for item in trips if item["partition"] == "train"
+    }
+    if assigned_folds != fold_by_trip:
+        raise ValueError("The fold and trip assignment files disagree")
+    tables = {
+        partition: {kind: f"{kind}_{partition}.csv" for kind in ("features", "labels")}
+        for partition in PARTITIONS
+    }
+    if any(name not in spec["outputs"] for files in tables.values() for name in files.values()):
+        raise ValueError("The data export must declare the separate feature and label tables")
+    for partition in PARTITIONS:
+        if sum(item["partition"] == partition for item in trips) != spec["trip_count"][partition]:
+            raise ValueError(f"Trip count in assignment file disagrees for {partition}")
+    return {
+        **spec, "feature_version": FEATURE_VERSION, "feature_order": FEATURE_ORDER,
+        "split_seed": spec["seed"], "candidate_policy": CANDIDATE_POLICY,
+        "trips": trips, "tables": tables,
+    }
+
+
+def manifest(path, *, synthetic=False, require_training_ready=True):
+    path = Path(path)
     spec = read_config(path)
     if spec.get("synthetic", False) is not synthetic:
         raise ValueError("Synthetic fixtures require explicit --synthetic mode")
-    if not synthetic and spec.get("training_ready") is not True:
-        raise ValueError("Real runs require a training_ready manifest")
+    if not synthetic and require_training_ready and spec.get("training_ready") is not True:
+        reasons = "; ".join(spec.get("readiness_blockers", []))
+        message = "Real runs require a training_ready manifest"
+        raise ValueError(f"{message}: {reasons}" if reasons else message)
+    if spec.get("manifest_version") == DATA_MANIFEST_VERSION:
+        spec = _data_export(path, spec)
     if tuple(spec["feature_order"]) != FEATURE_ORDER or spec["feature_version"] != FEATURE_VERSION:
         raise ValueError("Unexpected feature schema version/order")
     by_partition = {name: {} for name in PARTITIONS}

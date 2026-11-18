@@ -1,6 +1,6 @@
 # Sprint 2 candidate experiments
 
-The harness implements the candidate, label, factory and scoring interfaces in the [Sprint 2 draft contract](../docs/contracts/sprint2_v1.md). The CSV manifest adapter below is provisional until the C2 data export is reviewed.
+The harness implements the candidate, label, factory and scoring interfaces in the [Sprint 2 contract](../docs/contracts/sprint2_v1.md). It reads the C2 builder export directly.
 
 Install the numerical, configuration and calibration dependencies in a Python 3.10+ environment.
 
@@ -13,7 +13,9 @@ A config provides `seed`, `params` for the named factory, an optional `manifest`
 
 ## Data handoff
 
-The default manifest is `artifacts/data/manifest.json`. This is the runner's proposed adapter shape. All paths in the manifest are relative to it.
+Run from the repository root. The default `artifacts/data/manifest.json` accepts the C2 builder's `sprint2-data-manifest-v1` export. The runner verifies the candidate policy, compares `folds.json` with `trip_assignments.csv`, and derives geometry paths from the export's `source_root`. The separate feature and label CSVs must be generated alongside the manifest. A real run requires `training_ready: true`.
+
+Small development fixtures can instead declare their tables and assignments inline, as shown here. Inline table and geometry paths are relative to the manifest.
 
 ```json
 {

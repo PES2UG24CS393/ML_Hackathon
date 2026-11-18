@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from ml.evaluate import evaluate
-from ml.protocol import FEATURE_ORDER, manifest
+from ml.protocol import FEATURE_ORDER, dataset, manifest
 from ml.trainer import main
 
 
@@ -113,6 +113,57 @@ class ExperimentTests(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate trip"):
                 manifest(spec_path, synthetic=True)
+
+    def test_c2_export_preserves_folds_and_blocks_unreviewed_training(self):
+        with TemporaryDirectory() as path:
+            root = Path(path)
+            spec_path = fixture_inputs(root)
+            fixture = json.loads(spec_path.read_text())
+            folds = [{"fold_id": trip["fold_id"], "validation_trip_ids": [trip["trip_id"]]}
+                     for trip in fixture["trips"] if trip["partition"] == "train"]
+            fold_file = root / "folds.json"
+            fold_file.write_text(json.dumps(
+                {"fold_version": "trip-grouped-v1", "seed": 2026, "folds": folds}
+            ))
+            write_csv(
+                root / "trip_assignments.csv", ("split", "trip_id", "training_fold_id"),
+                [(trip["partition"], trip["trip_id"], trip["fold_id"]) for trip in fixture["trips"]],
+            )
+            outputs = []
+            for partition, tables in fixture["tables"].items():
+                for kind, name in tables.items():
+                    output = f"{kind}_{partition}.csv"
+                    (root / name).rename(root / output)
+                    outputs.append(output)
+            export = {
+                "manifest_version": "sprint2-data-manifest-v1", "label_version": "review-v1",
+                "contract_version": "sprint2_v1", "contract_frozen": True,
+                "evaluator_data_accessed": False, "source_root": str(root / "data"),
+                "candidate_settings": {
+                    "radius_m": 100.0, "max_candidates": 8, "arc_id_tie_break": "ascending",
+                },
+                "seed": 2026, "trip_count": {"train": 5, "student_test": 1},
+                "folds_file": "folds.json", "trip_assignments_file": "trip_assignments.csv",
+                "outputs": outputs, "training_ready": False,
+                "readiness_blockers": ["No independently reviewed training labels"],
+            }
+            spec_path.write_text(json.dumps(export))
+            with self.assertRaisesRegex(ValueError, "No independently reviewed training labels"):
+                manifest(spec_path)
+            spec, trips = manifest(spec_path, require_training_ready=False)
+            self.assertEqual(spec["split_seed"], 2026)
+            self.assertEqual(trips["train"]["00000005"]["fold_id"], 4)
+            self.assertIsNone(trips["student_test"]["00000006"]["fold_id"])
+            data = dataset(root, spec, "student_test", trips["student_test"])
+            self.assertEqual(data.validated, {("00000006", 0): 4, ("00000006", 1): 7})
+            self.assertEqual(data.geometry["00000006"], root / "data/student_test/00000006")
+
+            folds[0]["validation_trip_ids"] = ["00000006"]
+            fold_file.write_text(json.dumps(
+                {"fold_version": "trip-grouped-v1", "seed": 2026, "folds": folds}
+            ))
+            with self.assertRaisesRegex(ValueError, "assignment files disagree"):
+                manifest(spec_path, require_training_ready=False)
 
 
 if __name__ == "__main__":
