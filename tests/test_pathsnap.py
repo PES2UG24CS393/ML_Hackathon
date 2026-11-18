@@ -74,6 +74,24 @@ class InventoryTests(unittest.TestCase):
             self.assertFalse(row["route_available"])
             self.assertEqual(row["missing_files"], "route")
 
+    def test_inventory_rejects_the_same_structural_errors_as_the_parser(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            track = root / f"{root.name}.track"
+            arcs = root / f"{root.name}.arcs"
+            (root / f"{root.name}.nodes").write_text("0 0\n0.1 0.1\n")
+            for track_data, arc_data in (
+                ("0 0 1\n", "0 2\n"),
+                ("0 0 2\n0 0 1\n", "0 1\n"),
+                ("0 0 -1\n", "0 1\n"),
+            ):
+                with self.subTest(track=track_data, arcs=arc_data):
+                    track.write_text(track_data)
+                    arcs.write_text(arc_data)
+                    self.assertEqual(inspect_trip(root, "train")["status"], "invalid")
+                    with self.assertRaises(ValueError):
+                        load_trip(root)
+
     def test_inventory_keeps_source_ids_after_malformed_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "x"

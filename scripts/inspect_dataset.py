@@ -73,6 +73,8 @@ def inspect_trip(folder: Path, partition: str) -> dict:
                             raise ValueError("non-finite value")
                         if invalid_coordinate:
                             raise ValueError("coordinate out of bounds")
+                        if ext == "track" and nums[2] < 0:
+                            raise ValueError("timestamp must be nonnegative")
                         if ext in ("arcs", "route"):
                             try:
                                 ids = [int(token) for token in fields]
@@ -102,6 +104,8 @@ def inspect_trip(folder: Path, partition: str) -> dict:
             pass
     deltas = [b - a for a, b in zip(times, times[1:])]
     row["timestamp_reversals"] = sum(d < 0 for d in deltas)
+    if row["timestamp_reversals"]:
+        errors.append(f'timestamp_reversals={row["timestamp_reversals"]}')
     row["duplicate_timestamps"] = sum(count - 1 for count in Counter(times).values() if count > 1)
     row["sampling_gaps_gt_2s"] = sum(d > 2 for d in deltas)
 
@@ -144,14 +148,16 @@ def inspect_trip(folder: Path, partition: str) -> dict:
     for fields in tables["route"]:
         if fields is not None and (int(fields[0]) >= len(tables["arcs"]) or tables["arcs"][int(fields[0])] is None):
             row["invalid_references"] += 1
+    if row["invalid_references"]:
+        errors.append(f'invalid_references={row["invalid_references"]}')
     if errors:
         row["status"] = "invalid"
         row["anomalies"] = " | ".join(errors[:20])
-    elif any(row[key] for key in ("timestamp_reversals", "duplicate_timestamps", "sampling_gaps_gt_2s", "self_loops", "duplicate_arcs", "isolated_nodes", "invalid_references")):
+    elif any(row[key] for key in ("duplicate_timestamps", "sampling_gaps_gt_2s", "self_loops", "duplicate_arcs", "isolated_nodes")):
         row["status"] = "valid_with_anomalies"
         row["anomalies"] = ";".join(f"{key}={row[key]}" for key in (
-            "timestamp_reversals", "duplicate_timestamps", "sampling_gaps_gt_2s", "self_loops",
-            "duplicate_arcs", "isolated_nodes", "invalid_references") if row[key])
+            "duplicate_timestamps", "sampling_gaps_gt_2s", "self_loops",
+            "duplicate_arcs", "isolated_nodes") if row[key])
     return row
 
 

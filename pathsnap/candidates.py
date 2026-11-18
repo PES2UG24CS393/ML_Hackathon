@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 import argparse
 import csv
 import math
@@ -133,11 +134,14 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("reports/baseline"))
     args = parser.parse_args()
     trip = load_trip(args.trip)
+    started = perf_counter()
     candidates, predictions = rank_candidates(trip, args.top_k)
+    elapsed = perf_counter() - started
     write_outputs(candidates, predictions, args.out)
     matched = sum(p.arc_id is not None for p in predictions)
     print(f"trip={trip.trip_id} observations={len(trip.observations)} arcs={len(trip.network.arcs)} "
-          f"candidates={len(candidates)} predictions={matched}/{len(predictions)} output={args.out}")
+          f"candidates={len(candidates)} predictions={matched}/{len(predictions)} "
+          f"no_candidates={len(predictions) - matched} runtime_s={elapsed:.3f} output={args.out}")
 
 
 if __name__ == "__main__":
