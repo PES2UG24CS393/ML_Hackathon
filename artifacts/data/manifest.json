@@ -1,0 +1,75 @@
+{
+  "manifest_version": "sprint2-data-manifest-v1",
+  "label_version": "sprint2-route-labels-v1",
+  "contract_version": "sprint2_v1",
+  "contract_frozen": true,
+  "source_root": "data",
+  "evaluator_data_accessed": false,
+  "data_fingerprint_sha256": "aea9f1cad80ee3dd59a535062ce77c96b9834b48c49a5b7488ce2028e579b0d0",
+  "schema_sha256": "bdeef9a5bf256715e349021dd561006fe985f4c068e94fa53acd594762dd7afa",
+  "seed": 2026,
+  "candidate_settings": {
+    "radius_m": 100.0,
+    "max_candidates": 8,
+    "arc_id_tie_break": "ascending"
+  },
+  "alignment_settings": {
+    "ambiguity_margin_m": 2.0,
+    "skip_penalty_m": 0.25,
+    "break_policy": "trip proposals with any discontinuity remain excluded pending independent review"
+  },
+  "partitions": {
+    "train": {
+      "trips": 80,
+      "observations": 208417,
+      "feature_rows": 1359214,
+      "observations_with_candidates": 207074,
+      "empty_candidate_observations": 1343,
+      "candidate_coverage": 0.9935561878349655,
+      "alignment_proposals": 208417,
+      "candidate_misses": 23191,
+      "candidate_miss_rate": 0.11127211311937125,
+      "ambiguous_proposals": 149704,
+      "validated_labels": 0,
+      "reference_route_breaks": 13
+    },
+    "student_test": {
+      "trips": 10,
+      "observations": 19160,
+      "feature_rows": 130963,
+      "observations_with_candidates": 19160,
+      "empty_candidate_observations": 0,
+      "candidate_coverage": 1.0,
+      "alignment_proposals": 19160,
+      "candidate_misses": 71,
+      "candidate_miss_rate": 0.003705636743215031,
+      "ambiguous_proposals": 17139,
+      "validated_labels": 0,
+      "reference_route_breaks": 1
+    }
+  },
+  "trip_count": {
+    "train": 80,
+    "student_test": 10
+  },
+  "folds_file": "folds.json",
+  "trip_assignments_file": "trip_assignments.csv",
+  "outputs": [
+    "features_train.csv",
+    "labels_train.csv",
+    "features_student_test.csv",
+    "labels_student_test.csv",
+    "coverage_by_trip.csv",
+    "coverage_by_split.csv",
+    "reference_breaks.csv",
+    "review_queue.csv",
+    "sanity_checks.csv",
+    "folds.json",
+    "trip_assignments.csv",
+    "review_decisions_template.csv"
+  ],
+  "training_ready": false,
+  "readiness_blockers": [
+    "No independently reviewed training labels have status validated"
+  ]
+}
