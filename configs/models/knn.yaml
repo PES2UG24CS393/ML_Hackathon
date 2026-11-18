@@ -1,0 +1,6 @@
+# Euclidean neighbors with inverse-distance votes on CPU.
+# Exact matches vote alone. Record batch inference latency and peak memory.
+model: knn
+params:
+  n_neighbors: 15
+  n_jobs: 1
