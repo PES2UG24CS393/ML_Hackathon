@@ -1,6 +1,8 @@
 import csv
 import json
 from pathlib import Path
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -9,7 +11,7 @@ import numpy as np
 
 from ml.evaluate import evaluate
 from ml.protocol import FEATURE_ORDER, dataset, manifest
-from ml.trainer import main
+from ml.trainer import fit_model, load_inputs, main, score_candidate_rows
 
 
 class FixtureClassifier:
@@ -113,6 +115,49 @@ class ExperimentTests(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate trip"):
                 manifest(spec_path, synthetic=True)
+
+    def test_tuning_is_training_only_and_bundle_scores_round_trip(self):
+        from ml.tune import export_bundle, load_bundle, tune
+
+        with TemporaryDirectory() as path:
+            root = Path(path)
+            spec_path = fixture_inputs(root)
+            _, trips, train, _ = load_inputs(spec_path, True, training_only=True)
+            folds = {key: item["fold_id"] for key, item in trips["train"].items()}
+
+            def factory(seed, params):
+                return FixtureClassifier()
+
+            journal = root / "trials.jsonl"
+            space = {"fixture_parameter": {"type": "int", "low": 1, "high": 4}}
+            params, top1 = tune(factory, {}, 42, train, folds, False, space, 2, journal)
+            self.assertEqual(top1, 0.5)
+            self.assertEqual(len(journal.read_text().splitlines()), 2)
+            train.partition = "student_test"
+            with self.assertRaisesRegex(ValueError, "training partition"):
+                tune(factory, {}, 42, train, folds, False, space, 2, root / "invalid.jsonl")
+            train.partition = "train"
+
+            fitted = fit_model(factory, params, 42, train, folds)
+            bundle = root / "v1"
+            export_bundle(bundle, fitted, {"synthetic": True})
+            original = score_candidate_rows(*fitted[:2], train.candidates)
+            restored = score_candidate_rows(*load_bundle(bundle), train.candidates)
+            self.assertEqual(original, restored)
+            metadata = json.loads((bundle / "manifest.json").read_text())
+            self.assertEqual(metadata["feature_order"], list(FEATURE_ORDER))
+            self.assertEqual(metadata["candidate_policy"], {"radius_m": 100, "max_candidates": 8})
+            child = subprocess.run(
+                [sys.executable, "-B", "-c",
+                 "import sys; sys.path.insert(0, sys.argv[1]); "
+                 "import numpy as np; "
+                 "from joblib import load; "
+                 "m, _ = load(sys.argv[2]); "
+                 "print(m.predict_proba(np.array([[2.0, 0, 0, 0, 0]]))[0, list(m.classes_).index(1)])",
+                 str(Path(__file__).parent), str(bundle / "pipeline.joblib")],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertEqual(float(child.stdout.strip()), 0.8)
 
     def test_c2_export_preserves_folds_and_blocks_unreviewed_training(self):
         with TemporaryDirectory() as path:
