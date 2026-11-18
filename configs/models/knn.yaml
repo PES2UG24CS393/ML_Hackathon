@@ -1,10 +1,6 @@
-# Exact Euclidean neighbors with inverse-distance votes. Exact matches vote alone.
-# Ties at the neighborhood boundary preserve the runner's input row order.
-# The factory is deterministic for fixed row order. The manifest owns the split seed.
-# Scores are raw weighted class fractions and can be exactly zero or one.
-# Record warm scoring latency and CUDA peak allocated memory for the selected batch size.
-# CUDA-enabled PyTorch is required. Fold-local preprocessing uses scikit-learn.
+# Euclidean neighbors with inverse-distance votes on CPU.
+# Exact matches vote alone. Record batch inference latency and peak memory.
 model: knn
 params:
   n_neighbors: 15
-  batch_size: 128
+  n_jobs: 1
