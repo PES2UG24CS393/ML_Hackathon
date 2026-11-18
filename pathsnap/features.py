@@ -119,7 +119,8 @@ def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
 
 def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
                           ambiguity_margin_m: float = 2.0,
-                          skip_penalty_m: float = 0.25) -> list[RouteLabel]:
+                          skip_penalty_m: float = 0.25, *,
+                          candidate_rows: list[CandidateFeature] | None = None) -> list[RouteLabel]:
     """Propose monotonic observation-to-route alignment; reject uncertain labels.
 
     Dynamic programming assigns observations to nondecreasing route-step positions
@@ -127,7 +128,9 @@ def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
     separately from feature extraction. Rows near repeated/parallel route choices,
     outside the distance gate, or absent from the candidate radius are rejected.
     """
-    if trip.route is None or not trip.route:
+    if not trip.observations:
+        return []
+    if not trip.route:
         return [RouteLabel(trip.trip_id, obs.obs_id, None, None, None, "no_reference_route")
                 for obs in trip.observations]
     segments = {segment.arc_id: segment for segment in trip.network.segments}
@@ -155,7 +158,8 @@ def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
         if i:
             route_index = parents[i][route_index]
 
-    candidate_rows = feature_rows(trip, candidate_radius_m=labels_radius_m)
+    if candidate_rows is None:
+        candidate_rows = feature_rows(trip, candidate_radius_m=labels_radius_m)
     candidates_by_obs: dict[int, dict[int, float]] = {}
     for row in candidate_rows:
         candidates_by_obs.setdefault(row.obs_id, {})[row.arc_id] = row.distance_m
