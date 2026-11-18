@@ -56,7 +56,9 @@ d.track.forEach(p=>L.circleMarker([p.latitude,p.longitude],{radius:3,color:'#176
 L.polyline(d.track.map(p=>[p.latitude,p.longitude]),{color:'#1769d2',weight:2,dashArray:'4 5',opacity:.65}).addTo(gps);
 roads.addTo(map);gps.addTo(map); L.control.layers(null,{'Road network / predicted arcs':roads,'Raw GPS':gps}).addTo(map);
 map.fitBounds(L.latLngBounds(d.track.map(p=>[p.latitude,p.longitude])).pad(.08));
-L.control({position:'bottomleft'}).onAdd=function(){const e=L.DomUtil.create('div','legend');e.innerHTML='<b>PathSnap geometric baseline</b><br>Gray: road network<br>Red: selected nearest arcs<br>Blue: observed GPS';return e}.addTo(map);
+const legend=L.control({position:'bottomleft'});
+legend.onAdd=function(){const e=L.DomUtil.create('div','legend');e.innerHTML='<b>PathSnap geometric baseline</b><br>Gray: road network<br>Red: selected nearest arcs<br>Blue: observed GPS';return e};
+legend.addTo(map);
 </script></body></html>""".replace("const d=DATA;", f"const d={data};")
     html_path.write_text(html, encoding="utf-8")
     matched = sum(p["arc_id"] is not None for p in predictions)
