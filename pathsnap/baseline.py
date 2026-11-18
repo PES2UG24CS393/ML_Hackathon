@@ -1,6 +1,6 @@
 """Geometric nearest-road-segment baseline (not a trained ML model)."""
 
-from math import hypot, isfinite
+from math import isfinite
 
 from .preprocess import Trip
 
@@ -34,7 +34,7 @@ def nearest_segment_predictions(trip: Trip, max_distance_m: float = 250.0):
         best_id = None
         best_distance = max_distance_m
         for segment in (*grid.get(cell, ()), *long_segments):
-            distance = _segment_distance(point, segment.start_xy, segment.end_xy)
+            distance = segment.distance_to(point)
             if distance < best_distance or (
                 distance == best_distance and (best_id is None or segment.arc_id < best_id)
             ):
@@ -45,13 +45,3 @@ def nearest_segment_predictions(trip: Trip, max_distance_m: float = 250.0):
             "distance_m": round(best_distance, 3) if best_id is not None else None,
         })
     return output
-
-
-def _segment_distance(point, start, end):
-    dx, dy = end[0] - start[0], end[1] - start[1]
-    length_squared = dx * dx + dy * dy
-    if length_squared == 0:
-        return hypot(point[0] - start[0], point[1] - start[1])
-    fraction = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length_squared
-    fraction = max(0.0, min(1.0, fraction))
-    return hypot(point[0] - (start[0] + fraction * dx), point[1] - (start[1] + fraction * dy))

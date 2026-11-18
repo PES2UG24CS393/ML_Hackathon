@@ -85,7 +85,7 @@ def feature_rows(trip: Trip, candidate_radius_m: float = 100.0,
         nearby = []
         for index in indices:
             segment = segments[index]
-            distance = _point_segment_distance(point, segment.start_xy, segment.end_xy)
+            distance = segment.distance_to(point)
             if distance <= candidate_radius_m:
                 nearby.append((segment.arc_id, distance))
         nearby.sort(key=lambda item: (item[1], item[0]))
@@ -136,7 +136,7 @@ def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
     segments = {segment.arc_id: segment for segment in trip.network.segments}
     route_arc_ids = [step.arc_id for step in trip.route]
     # Emission cost for every observation and ordered reference-route occurrence.
-    distances = [[_point_segment_distance(point, segments[arc_id].start_xy, segments[arc_id].end_xy)
+    distances = [[segments[arc_id].distance_to(point)
                   for arc_id in route_arc_ids] for point in trip.observation_xy]
     n, m = len(distances), len(route_arc_ids)
     parents: list[list[int]] = [[-1] * m for _ in range(n)]
@@ -193,11 +193,3 @@ def align_reference_route(trip: Trip, labels_radius_m: float = 100.0,
 def feature_dicts(rows: list[CandidateFeature]) -> list[dict]:
     """Serialize typed feature records without introducing reference labels."""
     return [asdict(row) for row in rows]
-
-
-def _point_segment_distance(point, a, b) -> float:
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    length2 = dx * dx + dy * dy
-    fraction = 0.0 if length2 == 0 else max(0.0, min(1.0,
-        ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2))
-    return hypot(point[0] - (a[0] + fraction * dx), point[1] - (a[1] + fraction * dy))

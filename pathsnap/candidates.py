@@ -9,7 +9,6 @@ import argparse
 import csv
 import math
 
-from .baseline import _segment_distance
 from .preprocess import ArcGeometry, Trip, load_trip
 
 
@@ -31,10 +30,6 @@ class Prediction:
     distance_m: float | None
     candidate_count: int
     status: str
-
-
-def _distance(point: tuple[float, float], segment: ArcGeometry) -> float:
-    return _segment_distance(point, segment.start_xy, segment.end_xy)
 
 
 class _SegmentGrid:
@@ -59,7 +54,7 @@ class _SegmentGrid:
         px, py = point
         gx, gy = math.floor(px / self.cell), math.floor(py / self.cell)
         checked = {segment.arc_id for segment in self.long_segments}
-        scored = [(_distance(point, segment), segment.arc_id) for segment in self.long_segments]
+        scored = [(segment.distance_to(point), segment.arc_id) for segment in self.long_segments]
         max_radius = max(
             max((abs(x - gx) for x, _ in self.cells), default=0),
             max((abs(y - gy) for _, y in self.cells), default=0),
@@ -72,7 +67,7 @@ class _SegmentGrid:
                     for segment in self.cells.get((x, y), ()):
                         if segment.arc_id not in checked:
                             checked.add(segment.arc_id)
-                            scored.append((_distance(point, segment), segment.arc_id))
+                            scored.append((segment.distance_to(point), segment.arc_id))
             scored.sort(key=lambda value: (value[0], value[1]))
             if len(scored) >= top_k:
                 left, right = (gx - radius) * self.cell, (gx + radius + 1) * self.cell

@@ -75,6 +75,18 @@ class ArcGeometry(NamedTuple):
     def length_m(self) -> float:
         return hypot(self.end_xy[0] - self.start_xy[0], self.end_xy[1] - self.start_xy[1])
 
+    def distance_to(self, point: XY) -> float:
+        """Return the metric distance to the closest point on this segment."""
+        start_x, start_y = self.start_xy
+        dx = self.end_xy[0] - start_x
+        dy = self.end_xy[1] - start_y
+        length_squared = dx * dx + dy * dy
+        if length_squared == 0:
+            return hypot(point[0] - start_x, point[1] - start_y)
+        fraction = ((point[0] - start_x) * dx + (point[1] - start_y) * dy) / length_squared
+        fraction = max(0.0, min(1.0, fraction))
+        return hypot(point[0] - (start_x + fraction * dx), point[1] - (start_y + fraction * dy))
+
 
 @dataclass(frozen=True)
 class RoadNetwork:
